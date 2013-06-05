@@ -114,8 +114,9 @@ class Imap2Pool(object):
     '''Args: Sequence of imap2 workers.'''
 
     def __init__(self, worker_sequence):
-        self.input_queue = multiprocessing.Queue()
-        self.output_queue = multiprocessing.Queue()
+        self._input_queue = multiprocessing.Queue()
+        self._output_queue = multiprocessing.Queue()
+        self.num_inflight = 0
 
         worker_sequence = list(worker_sequence)
 
@@ -123,7 +124,7 @@ class Imap2Pool(object):
         for worker in worker_sequence:
             process = multiprocessing.Process(
                 target=child_routine(worker.fcn),
-                args=(worker.args, worker.kwargs, self.input_queue, self.output_queue))
+                args=(worker.args, worker.kwargs, self._input_queue, self._output_queue))
             process.start()
             self.processes.append(process)
 
@@ -132,14 +133,27 @@ class Imap2Pool(object):
         self.input_sequences = []
         self.finished_workers = False
 
+    def __del__(self):
+        '''Don't hang if all references to the pool are lost.'''
+        self.finish_workers()
+
+    def put_input(self, x):
+        self.num_inflight += 1
+        self._input_queue.put(x)
+
+    def pop_output(self, *args, **kwargs):
+        rv = self._output_queue.get(*args, **kwargs)
+        self.num_inflight -= 1 # only decrement if no exceptions were thrown
+        return rv
+
     def finish_workers(self):
         '''Sends stop tokens to subprocesses, then joins them.'''
         if not self.finished_workers:
-            self.finished_workers = True
             for _ in self.processes:
-                self.input_queue.put(None)
+                self._input_queue.put(None)
             for process in self.processes:
                 process.join()
+            self.finished_workers = True
 
     # === Input-enqueueing functionality
     def imap(self, input_sequence, pretransform=False):
@@ -176,7 +190,12 @@ class Imap2Pool(object):
         '''Put input on the queue. Spools enough input for twice the
         number of processes.
         '''
-        n_to_put = 2 * len(self.processes) - self.input_queue.qsize()
+        try:
+            n_to_put = 2 * len(self.processes) - self._input_queue.qsize()
+        except NotImplementedError:
+            # Mac OS X workaround
+            n_to_put = 2 * len(self.processes) # - self.num_inflight
+
         if n_to_put > 0:
             inputs = list(itertools.islice(self.all_input, n_to_put))
             for x in inputs:
@@ -196,7 +215,7 @@ class Imap2Pool(object):
         self.input_uid_to_input[uid] = x
 
         try:
-            self.input_queue.put((uid, xser))
+            self.put_input((uid, xser))
         except IOError as e:
             print("Error enqueueing item from main process", file=sys.stderr)
             raise
@@ -213,7 +232,7 @@ class Imap2Pool(object):
             '''returns True if there are processes alive, or items on the
             output queue.
             '''
-            return (not self.output_queue.empty()) or (
+            return (not self._output_queue.empty()) or (
                 (sum(p.is_alive() for p in self.processes) > 0))
 
         self.spool_input(close_if_done=close_if_done)
@@ -221,7 +240,7 @@ class Imap2Pool(object):
         while self.input_uid_to_input and has_output_or_inflight():
             self.spool_input(close_if_done=close_if_done)
             try:
-                uid, typ, output = self.output_queue.get(timeout=0.1)
+                uid, typ, output = self.pop_output(timeout=0.1)
                 if typ == 'output':
                     yield self.input_uid_to_input.pop(uid), output
                 elif typ == 'exception':
@@ -256,30 +275,3 @@ def unlabeled_pool(worker_fcn, *args, **kwargs):
         num_workers = multiprocesing.cpu_count()
     return pool(worker_fcn.init_args(*args, **kwargs)
         for _ in range(num_workers))
-
-
-if __name__ == "__main__":
-    import time
-    @worker
-    def worker_proc(seq, init=0):
-        print("got init arg {0}".format(init))
-        for x in seq:
-            time.sleep(0.1)
-            yield x + init
-
-    processes = pool(worker_proc.init_args(init=i) for i in [1, 2, 3])
-    print(list(processes.zip_in_out()))
-
-    processes = pool(worker_proc.init_args(init=i) for i in [1, 2, 3])
-
-    results = list(processes.imap([4, 4, 4]).zip_in_out(close_if_done=False))
-    print(results)
-    assert set(results) == set([(4, 5), (4, 6), (4, 7)])
-
-    results = list(processes.imap([4, 4, 4]).zip_in_out(close_if_done=False))
-    print(results)
-    assert set(results) == set([(4, 5), (4, 6), (4, 7)])
-
-    for input, output in processes.imap([4, 4, 4] * 3).zip_in_out():
-        print("For input {0} got result {1}".format(input, output))
-        time.sleep(0.3)
