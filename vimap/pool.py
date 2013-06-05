@@ -106,6 +106,21 @@ class Imap2Pool(object):
         self.num_inflight -= 1 # only decrement if no exceptions were thrown
         return rv
 
+    # TODO: write tests
+    def consume_all_output_print_errors(self):
+        '''Pull all output off the output queue, print any exceptions.
+
+        This is useful if something crashed on the main thread, before
+        worker exceptions were printed.
+        '''
+        while not self._output_queue.empty():
+            try:
+                uid, typ, output = self.pop_output(timeout=0.1)
+                if typ == 'exception':
+                    print("Worker exception: {0}".format(output), file=sys.stderr)
+            except multiprocessing.queues.Empty:
+                pass
+
     def finish_workers(self):
         '''Sends stop tokens to subprocesses, then joins them.'''
         if not self.finished_workers:
@@ -113,6 +128,7 @@ class Imap2Pool(object):
                 self._input_queue.put(None)
             for process in self.processes:
                 process.join()
+            self.consume_all_output_print_errors()
             self.finished_workers = True
 
     # === Input-enqueueing functionality
