@@ -1,4 +1,5 @@
-= Variations on imap, not in C
+Variations on imap, not in C
+====================
 
 The `vimap` package is designed to provide a more flexible alternative for `multiprocessing.imap_unordered`. (You should read `multiprocessing` documentation if you haven't already, or else this README won't make sense!) It aspires to support HTTP-like clients processing data, though contains nothing client-specific.
 
@@ -21,7 +22,8 @@ Other features / design decisions:
  * Attempts to keep all workers busy by pre-emptively enqueuing tasks
  * Also, it _probably_ doesn't affect you, but this library can also work around a bug in Python 2.6.7 [ http://stackoverflow.com/q/16684900/81636 ].
 
-== Defining worker functions
+Defining worker functions
+---------------------
 
 `vimap` provides its custom initialization and such via decorated functions. If your inputs are HTTP requests, and you want to get responses from any of a set of servers, you could express your program as such (using the `requests` HTTP library -- it's intuitive so you probably don't need to read its documentation),
 
@@ -34,7 +36,8 @@ Other features / design decisions:
 
 What is happening? When the worker processes start up, a new session is opened. Each request (some pickleable object containing a .uri and a .data), sent by the parent process, is posted to the server. Then, the worker yields a *single* response, and this response is sent back to the parent process.
 
-== imapping data from the parent process
+imapping data from the parent process
+---------------------
 
 Let's continue the example,
 
@@ -47,7 +50,10 @@ This initializes a pool of workers. Each one gets a bound argument `server`. Whe
 
 This reads lines from a file containing JSON input, and sends the loaded entries to the workers. In the real world, you'd probably want to make the workers do the JSON loading. The `.ignore_output()` will cause the entire iterable (input file) to be read, and [by default] close the pool after it's done.
 
-=== The input binder
+variations on imap
+---------------------
+
+### The input binder
 
 The first Variation on Imap tuples inputs with outputs. So, you have some [lazy] iterable of inputs,
 
