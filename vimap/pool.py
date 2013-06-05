@@ -1,34 +1,7 @@
 '''
-Like multiprocessing.imap_unordered(), but more flexible. In particular, it
-allows,
+Provides process pools for vimap.
 
- * Worker processes to initialize connections, etc. on startup
- * Initialization arguments have a process ID
- * Exceptions to be passed through to the main class
-
-The main declaration of worker routines is to give a function, which first
-takes an input sequence, then any other options.
-
-    @imap2.worker
-    def worker(input_sequence, server=None):
-        # Sometimes you want stuff
-        conn = open_worker_connection(server)
-
-        for item in input_sequence:
-            x = do_work(conn, item)
-            yield f(x)
-
-        conn.close()
-
-In order to provide for useful initialization, that's also per-worker, we
-explicitly declare a list of processes,
-
-    processes = imap2.pool(worker.init_args(server=server) for server in servers)
-
-For simple tasks, we probably just want to iterate over input-output pairs,
-
-    for input, output in processes.imap(entire_input_sequence).zip_in_out():
-        print("For input {0}, got result {1}".format(input, output))
+TBD:
 
 For more complex tasks, which we might want to handle exceptions,
 
@@ -49,29 +22,15 @@ relatively small and/or calculated ahead of time, you can write,
 
 (by default, input is only enqueued as results are consumed.)
 '''
+from __future__ import absolute_import
 from __future__ import print_function
 import itertools
 import multiprocessing
 import multiprocessing.queues
 import sys
-from collections import namedtuple
 
 
 _IDLE_TIMEOUT = 0.02
-
-
-_Imap2BoundWorker = namedtuple("_Imap2BoundWorker", ["fcn", "args", "kwargs"])
-
-
-class Imap2WorkerWrapper(object):
-    '''Thing returned from imap2.worker'''
-    def __init__(self, fcn):
-        self.fcn = fcn
-
-    def init_args(self, *args, **kwargs):
-        return _Imap2BoundWorker(self.fcn, args, kwargs)
-
-worker = Imap2WorkerWrapper
 
 
 def child_routine(fcn):
@@ -118,20 +77,21 @@ class Imap2Pool(object):
         self._output_queue = multiprocessing.Queue()
         self.num_inflight = 0
 
-        worker_sequence = list(worker_sequence)
-
+        self.worker_sequence = worker_sequence
         self.processes = []
-        for worker in worker_sequence:
-            process = multiprocessing.Process(
-                target=child_routine(worker.fcn),
-                args=(worker.args, worker.kwargs, self._input_queue, self._output_queue))
-            process.start()
-            self.processes.append(process)
 
         self.input_uid_ctr = 0
         self.input_uid_to_input = {} # input to keep around until handled
         self.input_sequences = []
         self.finished_workers = False
+
+    def fork(self):
+        for worker in self.worker_sequence:
+            process = multiprocessing.Process(
+                target=child_routine(worker.fcn),
+                args=(worker.args, worker.kwargs, self._input_queue, self._output_queue))
+            process.start()
+            self.processes.append(process)
 
     def __del__(self):
         '''Don't hang if all references to the pool are lost.'''
@@ -257,7 +217,10 @@ class Imap2Pool(object):
         # Return when input given is exhausted, or workers die from exceptions
     # ------
 
-pool = Imap2Pool
+def fork(*args, **kwargs):
+    pool = Imap2Pool(*args, **kwargs)
+    pool.fork()
+    return pool
 
 
 def unlabeled_pool(worker_fcn, *args, **kwargs):

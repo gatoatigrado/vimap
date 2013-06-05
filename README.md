@@ -27,7 +27,8 @@ Defining worker functions
 
 `vimap` provides its custom initialization and such via decorated functions. If your inputs are HTTP requests, and you want to get responses from any of a set of servers, you could express your program as such (using the `requests` HTTP library -- it's intuitive so you probably don't need to read its documentation),
 
-    @vimap.worker
+    import vimap.worker_process
+    @vimap.worker_process.worker
     def send_reqests_worker(requests, server):
         s = requests.Session()
         for request in requests:
@@ -41,7 +42,8 @@ imapping data from the parent process
 
 Let's continue the example,
 
-    pool = vimap.pool(send_requests_worker.init_args(server=server) for server in my_servers)
+    import vimap.pool
+    pool = vimap.pool.fork(send_requests_worker.init_args(server=server) for server in my_servers)
 
 This initializes a pool of workers. Each one gets a bound argument `server`. When the worker processes start up, they start running until they try to pull an element off of the `requests` iterator; then they must pause for the parent process to send data. The parent process can send data like so,
 
