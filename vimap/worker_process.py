@@ -3,6 +3,8 @@ Provides an interface for defining worker processes.
 '''
 from __future__ import absolute_import
 from __future__ import print_function
+
+import functools
 from collections import namedtuple
 
 
@@ -19,3 +21,6 @@ class Imap2WorkerWrapper(object):
 
 
 worker = Imap2WorkerWrapper
+
+def instancemethod_worker(fcn):
+    return property(lambda self: worker(functools.partial(fcn, self)))
