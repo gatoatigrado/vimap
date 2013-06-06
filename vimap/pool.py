@@ -24,10 +24,13 @@ relatively small and/or calculated ahead of time, you can write,
 '''
 from __future__ import absolute_import
 from __future__ import print_function
+
 import itertools
 import multiprocessing
 import multiprocessing.queues
 import sys
+
+import vimap.exception_handling
 
 
 _IDLE_TIMEOUT = 0.02
@@ -53,7 +56,7 @@ def child_routine(fcn):
                 except multiprocessing.queues.Empty:
                     # print("Waiting")
                     pass
-                except IOError as e:
+                except IOError:
                     print("Worker error getting item from input queue",
                         file=sys.stderr)
                     raise
@@ -96,8 +99,13 @@ class Imap2Pool(object):
     def __del__(self):
         '''Don't hang if all references to the pool are lost.'''
         self.finish_workers()
+        self.consume_all_output_print_errors()
 
     def put_input(self, x):
+        '''NOTE: This might raise an exception if the workers have died during
+        initialization on Linux. It's currently reproducible via the
+        ExceptionsTest.test_basic_exceptions; I'm not sure how to fix it.
+        '''
         self.num_inflight += 1
         self._input_queue.put(x)
 
@@ -106,7 +114,6 @@ class Imap2Pool(object):
         self.num_inflight -= 1 # only decrement if no exceptions were thrown
         return rv
 
-    # TODO: write tests
     def consume_all_output_print_errors(self):
         '''Pull all output off the output queue, print any exceptions.
 
@@ -117,18 +124,19 @@ class Imap2Pool(object):
             try:
                 uid, typ, output = self.pop_output(timeout=0.1)
                 if typ == 'exception':
-                    print("Worker exception: {0}".format(output), file=sys.stderr)
+                    vimap.exception_handling.print_exception(output, None, None)
             except multiprocessing.queues.Empty:
                 pass
 
     def finish_workers(self):
-        '''Sends stop tokens to subprocesses, then joins them.'''
+        '''Sends stop tokens to subprocesses, then joins them. There may still be
+        unconsumed output.
+        '''
         if not self.finished_workers:
             for _ in self.processes:
                 self._input_queue.put(None)
             for process in self.processes:
                 process.join()
-            self.consume_all_output_print_errors()
             self.finished_workers = True
 
     # === Input-enqueueing functionality
@@ -192,7 +200,7 @@ class Imap2Pool(object):
 
         try:
             self.put_input((uid, xser))
-        except IOError as e:
+        except IOError:
             print("Error enqueueing item from main process", file=sys.stderr)
             raise
 
@@ -220,11 +228,10 @@ class Imap2Pool(object):
                 if typ == 'output':
                     yield self.input_uid_to_input.pop(uid), output
                 elif typ == 'exception':
-                    print("zip_in_out: Worker exception {0}".format(output),
-                        file=sys.stderr)
+                    vimap.exception_handling.print_exception(output, None, None)
             except multiprocessing.queues.Empty:
                 pass
-            except IOError as e:
+            except IOError:
                 print("Error getting output queue item from main process",
                     file=sys.stderr)
                 raise
@@ -239,7 +246,7 @@ def fork(*args, **kwargs):
     return pool
 
 
-def unlabeled_pool(worker_fcn, *args, **kwargs):
+def unlabeled(worker_fcn, *args, **kwargs):
     '''Shortcut for when you don't care about per-worker initialization
     arguments.
 
@@ -251,6 +258,6 @@ def unlabeled_pool(worker_fcn, *args, **kwargs):
     '''
     num_workers = kwargs.pop('num_workers', None)
     if num_workers is None:
-        num_workers = multiprocesing.cpu_count()
-    return pool(worker_fcn.init_args(*args, **kwargs)
+        num_workers = multiprocessing.cpu_count()
+    return fork(worker_fcn.init_args(*args, **kwargs)
         for _ in range(num_workers))
