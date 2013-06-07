@@ -28,72 +28,18 @@ from __future__ import print_function
 import itertools
 import multiprocessing
 import multiprocessing.queues
-import os
 import signal
 import sys
 import time
 import traceback
 
 import vimap.exception_handling
+import vimap.real_worker_routine
 
 
-_IDLE_TIMEOUT = 0.02
+# TODO: Find why this is necessary
+_MAX_IN_FLIGHT = 100
 
-
-# debug = print
-debug = lambda *args, **kwargs: None
-
-
-def child_routine(fcn):
-    def real_worker_routine(init_args, init_kwargs, input_queue, output_queue):
-        '''
-        Takes ordered items from input_queue, lets `fcn` iterate over
-        those, and puts items yielded by `fcn` onto the output queue,
-        with their IDs.
-        '''
-        debug("Worker[pid {0}] starting (kwargs {1})".format(os.getpid(), init_kwargs))
-        i = [None] # just a mutable value
-        def queue_generator():
-            while True:
-                try:
-                    x = input_queue.get(timeout=_IDLE_TIMEOUT)
-                    # print("Got {0} from input queue.".format(x))
-                    if x is None:
-                        return
-                    i[0], z = x
-                    yield z
-                except multiprocessing.queues.Empty:
-                    # print("Waiting")
-                    pass
-                except IOError:
-                    print("Worker error getting item from input queue",
-                        file=sys.stderr)
-                    raise
-        try:
-            for output in fcn(queue_generator(), *init_args, **init_kwargs):
-                assert i is not None, ("Produced output before getting first "
-                    "input, or multiple outputs for one input.")
-                output_queue.put( (i[0], 'output', output) )
-                i[0] = None
-        except Exception as e:
-            debug("Got exception {0}\n{1}".format(e, traceback.format_exc()))
-            output_queue.put( (i[0], 'exception', e) )
-
-        # Explicitly join queues, so that we'll get "stuck" in something that's
-        # more easily debugged than multiprocessing.
-        input_queue.close()
-        output_queue.close()
-        try:
-            debug("Joining input queue")
-            input_queue.join_thread()
-            debug("Joining output queue")
-            output_queue.join_thread()
-        # threads might have already been closed
-        except AssertionError: pass
-
-        debug("Worker[pid {0}] exiting (kwargs {1})...".format(os.getpid(), init_kwargs))
-
-    return real_worker_routine
 
 
 class Imap2Pool(object):
@@ -105,8 +51,8 @@ class Imap2Pool(object):
         self.in_queue_size_factor = in_queue_size_factor
         self.worker_sequence = list(worker_sequence)
 
-        self._input_queue = multiprocessing.Queue(self.max_in_queue)
-        self._output_queue = multiprocessing.Queue()
+        self._input_queue = multiprocessing.Queue(self.max_in_flight)
+        self._output_queue = multiprocessing.Queue(self.max_in_flight)
         self.num_inflight = 0
 
         self.processes = []
@@ -118,13 +64,16 @@ class Imap2Pool(object):
         self.input_sequences = []
         self.finished_workers = False
 
-    max_in_queue = property(lambda self: self.in_queue_size_factor * len(self.worker_sequence))
+    max_in_flight = property(lambda self: min(_MAX_IN_FLIGHT,
+        self.in_queue_size_factor * len(self.worker_sequence)))
 
     def fork(self):
         for worker in self.worker_sequence:
+            routine = vimap.real_worker_routine.WorkerRoutine(
+                worker.fcn, worker.args, worker.kwargs)
             process = multiprocessing.Process(
-                target=child_routine(worker.fcn),
-                args=(worker.args, worker.kwargs, self._input_queue, self._output_queue))
+                target=routine.run,
+                args=(self._input_queue, self._output_queue))
             process.daemon = True # processes will be controlled by parent
             process.start()
             self.processes.append(process)
@@ -210,7 +159,7 @@ class Imap2Pool(object):
         '''Put input on the queue. Spools enough input for twice the
         number of processes.
         '''
-        n_to_put = self.max_in_queue - self.num_inflight
+        n_to_put = self.max_in_flight - self.num_inflight
 
         if n_to_put > 0:
             inputs = list(itertools.islice(self.all_input, n_to_put))
