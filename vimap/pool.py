@@ -28,12 +28,20 @@ from __future__ import print_function
 import itertools
 import multiprocessing
 import multiprocessing.queues
+import os
+import signal
 import sys
+import time
+import traceback
 
 import vimap.exception_handling
 
 
 _IDLE_TIMEOUT = 0.02
+
+
+# debug = print
+debug = lambda *args, **kwargs: None
 
 
 def child_routine(fcn):
@@ -43,6 +51,7 @@ def child_routine(fcn):
         those, and puts items yielded by `fcn` onto the output queue,
         with their IDs.
         '''
+        debug("Worker[pid {0}] starting (kwargs {1})".format(os.getpid(), init_kwargs))
         i = [None] # just a mutable value
         def queue_generator():
             while True:
@@ -67,7 +76,22 @@ def child_routine(fcn):
                 output_queue.put( (i[0], 'output', output) )
                 i[0] = None
         except Exception as e:
+            debug("Got exception {0}\n{1}".format(e, traceback.format_exc()))
             output_queue.put( (i[0], 'exception', e) )
+
+        # Explicitly join queues, so that we'll get "stuck" in something that's
+        # more easily debugged than multiprocessing.
+        input_queue.close()
+        output_queue.close()
+        try:
+            debug("Joining input queue")
+            input_queue.join_thread()
+            debug("Joining output queue")
+            output_queue.join_thread()
+        # threads might have already been closed
+        except AssertionError: pass
+
+        debug("Worker[pid {0}] exiting (kwargs {1})...".format(os.getpid(), init_kwargs))
 
     return real_worker_routine
 
@@ -75,24 +99,29 @@ def child_routine(fcn):
 class Imap2Pool(object):
     '''Args: Sequence of imap2 workers.'''
 
-    def __init__(self, worker_sequence):
-        self._input_queue = multiprocessing.Queue()
+    def __init__(self, worker_sequence, timeout=5.0):
+        self.worker_sequence = list(worker_sequence)
+        self._input_queue = multiprocessing.Queue(self.max_in_queue)
         self._output_queue = multiprocessing.Queue()
         self.num_inflight = 0
 
-        self.worker_sequence = worker_sequence
         self.processes = []
+
+        self.timeout = timeout
 
         self.input_uid_ctr = 0
         self.input_uid_to_input = {} # input to keep around until handled
         self.input_sequences = []
         self.finished_workers = False
 
+    max_in_queue = property(lambda self: 4 * len(self.worker_sequence))
+
     def fork(self):
         for worker in self.worker_sequence:
             process = multiprocessing.Process(
                 target=child_routine(worker.fcn),
                 args=(worker.args, worker.kwargs, self._input_queue, self._output_queue))
+            process.daemon = True # processes will be controlled by parent
             process.start()
             self.processes.append(process)
 
@@ -109,8 +138,8 @@ class Imap2Pool(object):
         self.num_inflight += 1
         self._input_queue.put(x)
 
-    def pop_output(self, *args, **kwargs):
-        rv = self._output_queue.get(*args, **kwargs)
+    def pop_output(self):
+        rv = self._output_queue.get_nowait()
         self.num_inflight -= 1 # only decrement if no exceptions were thrown
         return rv
 
@@ -122,11 +151,11 @@ class Imap2Pool(object):
         '''
         while not self._output_queue.empty():
             try:
-                uid, typ, output = self.pop_output(timeout=0.1)
+                uid, typ, output = self.pop_output()
                 if typ == 'exception':
                     vimap.exception_handling.print_exception(output, None, None)
             except multiprocessing.queues.Empty:
-                pass
+                time.sleep(0.01)
 
     def finish_workers(self):
         '''Sends stop tokens to subprocesses, then joins them. There may still be
@@ -158,10 +187,13 @@ class Imap2Pool(object):
         self.spool_input(close_if_done=False)
         return self
 
-    def map(self, *args, **kwargs):
-        '''Like `imap`, but adds the entire input sequence.'''
-        self.imap(*args, **kwargs).enqueue_all()
-        return self
+    # NOTE: `map` may overwhelm the output queue and cause things to freeze,
+    # therefore it's getting removed for now.
+    #
+    # def map(self, *args, **kwargs):
+    #     '''Like `imap`, but adds the entire input sequence.'''
+    #     self.imap(*args, **kwargs).enqueue_all()
+    #     return self
 
     @property
     def all_input(self):
@@ -174,11 +206,7 @@ class Imap2Pool(object):
         '''Put input on the queue. Spools enough input for twice the
         number of processes.
         '''
-        try:
-            n_to_put = 2 * len(self.processes) - self._input_queue.qsize()
-        except NotImplementedError:
-            # Mac OS X workaround
-            n_to_put = 2 * len(self.processes) # - self.num_inflight
+        n_to_put = self.max_in_queue - self.num_inflight
 
         if n_to_put > 0:
             inputs = list(itertools.islice(self.all_input, n_to_put))
@@ -224,13 +252,13 @@ class Imap2Pool(object):
         while self.input_uid_to_input and has_output_or_inflight():
             self.spool_input(close_if_done=close_if_done)
             try:
-                uid, typ, output = self.pop_output(timeout=0.1)
+                uid, typ, output = self.pop_output()
                 if typ == 'output':
                     yield self.input_uid_to_input.pop(uid), output
                 elif typ == 'exception':
                     vimap.exception_handling.print_exception(output, None, None)
             except multiprocessing.queues.Empty:
-                pass
+                time.sleep(0.01)
             except IOError:
                 print("Error getting output queue item from main process",
                     file=sys.stderr)
@@ -239,6 +267,9 @@ class Imap2Pool(object):
             self.finish_workers()
         # Return when input given is exhausted, or workers die from exceptions
     # ------
+
+    def ignore_output(self, *args, **kwargs):
+        for _ in self.zip_in_out(*args, **kwargs): pass
 
 def fork(*args, **kwargs):
     pool = Imap2Pool(*args, **kwargs)

@@ -16,3 +16,7 @@ class FuzzTest(T.TestCase):
             processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, 1, 1])
             res = list(processes.imap(list(range(1, n))).zip_in_out())
             T.assert_equal(set(out for in_, out in res), set(range(2, n+1)))
+
+    def test_try_overwhelm_output_queue(self):
+        processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, 1, 1])
+        processes.imap(xrange(10000)).ignore_output()
