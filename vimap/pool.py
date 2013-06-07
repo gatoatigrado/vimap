@@ -99,8 +99,12 @@ def child_routine(fcn):
 class Imap2Pool(object):
     '''Args: Sequence of imap2 workers.'''
 
-    def __init__(self, worker_sequence, timeout=5.0):
+    # TODO: Implement timeout in joining workers
+    #
+    def __init__(self, worker_sequence, in_queue_size_factor=10, timeout=5.0):
+        self.in_queue_size_factor = in_queue_size_factor
         self.worker_sequence = list(worker_sequence)
+
         self._input_queue = multiprocessing.Queue(self.max_in_queue)
         self._output_queue = multiprocessing.Queue()
         self.num_inflight = 0
@@ -114,7 +118,7 @@ class Imap2Pool(object):
         self.input_sequences = []
         self.finished_workers = False
 
-    max_in_queue = property(lambda self: 4 * len(self.worker_sequence))
+    max_in_queue = property(lambda self: self.in_queue_size_factor * len(self.worker_sequence))
 
     def fork(self):
         for worker in self.worker_sequence:
