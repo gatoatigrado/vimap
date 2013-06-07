@@ -13,3 +13,4 @@ dist
 .project
 Session.vim
 tmp/
+vimap.egg-info/
