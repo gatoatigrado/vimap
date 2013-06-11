@@ -8,6 +8,7 @@ from __future__ import print_function
 import multiprocessing.queues
 import os
 import traceback
+
 import vimap.exception_handling
 
 
@@ -21,11 +22,12 @@ class WorkerRoutine(object):
     def __init__(self, fcn, init_args, init_kwargs):
         self.fcn = fcn
         self.init_args = init_args
-        self.init_kwargs = init_kwargs
+        self.init_kwargs = dict(init_kwargs)
+        self.init_kwargs_str = str(self.init_kwargs) # for debug printing
 
     def debug(self, message, *fmt_args, **fmt_kwargs):
         debug("Worker[pid {0}, kwargs {1}] {2}".format(
-            os.getpid(), self.init_kwargs, message.format(*fmt_args, **fmt_kwargs)))
+            os.getpid(), self.init_kwargs_str, message.format(*fmt_args, **fmt_kwargs)))
 
     def worker_input_generator(self):
         '''Call this on the worker processes: yields input.'''
@@ -89,7 +91,7 @@ class WorkerRoutine(object):
                 self.output_queue.put( (self.input_index, 'output', output) )
                 self.input_index = None # prevent it from producing mult. outputs
         except Exception as e:
-            self.debug("Got exception {0}\n{1}".format(e, traceback.format_exc()))
+            self.debug("Got exception {0}\n{1}", e, traceback.format_exc())
             self.output_queue.put( (self.input_index, 'exception', e) )
 
         self.explicitly_close_queues()
