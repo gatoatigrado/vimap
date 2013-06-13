@@ -42,8 +42,8 @@ _MAX_IN_FLIGHT = 100
 
 
 
-class Imap2Pool(object):
-    '''Args: Sequence of imap2 workers.'''
+class VimapPool(object):
+    '''Args: Sequence of vimap workers.'''
 
     # TODO: Implement timeout in joining workers
     #
@@ -191,6 +191,10 @@ class Imap2Pool(object):
             self.enqueue(x)
     # ------
 
+    def get_corresponding_input(self, uid, output):
+        '''Dummy method for mocking.'''
+        return self.input_uid_to_input.pop(uid)
+
     # === Results-consuming functions
     def zip_in_out(self, close_if_done=True):
         def has_output_or_inflight():
@@ -207,7 +211,7 @@ class Imap2Pool(object):
             try:
                 uid, typ, output = self.pop_output()
                 if typ == 'output':
-                    yield self.input_uid_to_input.pop(uid), output
+                    yield self.get_corresponding_input(uid, output), output
                 elif typ == 'exception':
                     vimap.exception_handling.print_exception(output, None, None)
             except multiprocessing.queues.Empty:
@@ -221,11 +225,11 @@ class Imap2Pool(object):
         # Return when input given is exhausted, or workers die from exceptions
     # ------
 
-    def ignore_output(self, *args, **kwargs):
+    def block_ignore_output(self, *args, **kwargs):
         for _ in self.zip_in_out(*args, **kwargs): pass
 
 def fork(*args, **kwargs):
-    pool = Imap2Pool(*args, **kwargs)
+    pool = VimapPool(*args, **kwargs)
     pool.fork()
     return pool
 
@@ -236,7 +240,7 @@ def unlabeled(worker_fcn, *args, **kwargs):
 
     Example usage:
 
-        parse_mykey = imap2.unlabeled_pool(
+        parse_mykey = vimap.pool.unlabeled_pool(
             lambda line: simplejson.loads(line)['mykey'])
         entries = parse_mykey.imap(fileinput.input())
     '''

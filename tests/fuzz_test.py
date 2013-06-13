@@ -19,4 +19,4 @@ class FuzzTest(T.TestCase):
 
     def test_try_overwhelm_output_queue(self):
         processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, 1, 1])
-        processes.imap(xrange(10000)).ignore_output()
+        processes.imap(xrange(10000)).block_ignore_output()
