@@ -66,9 +66,11 @@ class WorkerRoutine(object):
             self.input_queue.join_thread()
             self.debug("...done")
 
-            self.debug("Joining output queue (size {size}, full: {full})",
-                size=self.output_queue.qsize(),
-                full=self.output_queue.full())
+            try:
+                self.debug("Joining output queue (size {size}, full: {full})",
+                    size=self.output_queue.qsize(),
+                    full=self.output_queue.full())
+            except NotImplementedError: pass # Mac OS X doesn't implement qsize()
             self.output_queue.join_thread()
             self.debug("...done")
         # threads might have already been closed
