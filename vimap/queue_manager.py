@@ -94,6 +94,7 @@ class VimapQueueManager(object):
         Returns:
             True iff `input_iterator` is exhausted.
         '''
+        self.feed_out_to_tmp()
         n_to_put = min(self.max_real_in_flight - self.num_real_in_flight,
             self.max_total_in_flight - self.num_total_in_flight)
 
@@ -101,6 +102,5 @@ class VimapQueueManager(object):
             inputs = list(itertools.islice(input_iterator, n_to_put))
             for x in inputs:
                 self.put_input(x)
-            self.feed_out_to_tmp()
             if not inputs:
                 return True
