@@ -5,12 +5,21 @@ import mock
 import multiprocessing
 from collections import namedtuple
 
+import vimap.exception_handling
 import vimap.pool
 
 DebugResult = namedtuple('DebugResult', ['uid', 'input', 'output'])
 
 get_func = lambda x: lambda y: x + y
 unpickleable = (get_func(3), 3)
+
+
+def no_warnings():
+    '''Make vimap.exception_handling.print_warning fail tests.'''
+    import testify as T # in case you're not using testify
+
+    return mock.patch.object(vimap.exception_handling, 'print_warning',
+        lambda *args, **kwargs: T.assert_not_reached())
 
 
 class DebugPool(vimap.pool.VimapPool):

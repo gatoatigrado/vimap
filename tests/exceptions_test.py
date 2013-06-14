@@ -4,17 +4,21 @@ import testify as T
 import vimap.exception_handling
 import vimap.pool
 import vimap.worker_process
+import vimap.testing
 
 
 @vimap.worker_process.worker
 def worker_raise_exc_immediately(seq, init=0):
     raise ValueError("hello")
+    return seq
 
 
 @vimap.worker_process.worker
 def worker_raise_exc_with_curleys(seq, init=0):
-    for _ in seq:
-        raise ValueError("{0} curley braces!")
+    for x in seq:
+        if x >= 0:
+            raise ValueError("{0} curley braces!")
+        yield
 
 
 def serialize_error(error):
@@ -28,6 +32,7 @@ class ExceptionsTest(T.TestCase):
             for i in [1, 1, 1])
         res = list(processes.imap(list(range(1, 10))).zip_in_out())
         T.assert_equal(res, [])
+        T.assert_equal(processes.finished_workers, True)
 
         calls = print_exc_mock.call_args_list
         errors = [serialize_error(call[0][0]) for call in calls]
@@ -56,3 +61,34 @@ class ExceptionsTest(T.TestCase):
         calls = print_exc_mock.call_args_list
         errors = [serialize_error(call[0][0]) for call in calls]
         T.assert_equal(errors, [serialize_error(ValueError("hello"))] * 3)
+
+    @mock.patch.object(vimap.exception_handling, 'print_exception')
+    def test_a_few_error(self, print_exc_mock):
+        processes = vimap.pool.fork((worker_raise_exc_with_curleys.init_args(init=i)
+            for i in xrange(2)), in_queue_size_factor=2)
+        processes.imap([1]).block_ignore_output()
+        del processes
+
+        calls = print_exc_mock.call_args_list
+        errors = [serialize_error(call[0][0]) for call in calls]
+        T.assert_equal(errors, [serialize_error(ValueError("{0} curley braces!"))])
+
+    @mock.patch.object(vimap.exception_handling, 'print_warning')
+    @mock.patch.object(vimap.exception_handling, 'print_exception')
+    def test_fail_after_a_while(self, print_exc_mock, print_warning_mock):
+        processes = vimap.pool.fork((worker_raise_exc_with_curleys.init_args(init=i)
+            for i in xrange(100)), in_queue_size_factor=2)
+        processes.imap([-1] * 3000 + list(range(50)))
+        del processes
+
+        calls = print_exc_mock.call_args_list
+        errors = [serialize_error(call[0][0]) for call in calls]
+        T.assert_equal(errors, [serialize_error(ValueError("{0} curley braces!"))] * 50)
+
+        # NOTE: Sometimes, the weakref in the pool is deleted, so 'has_exceptions' is
+        # not set, and the pool prints warnings we don't actually care about. Make
+        # sure that this is the only warning printed.
+        if print_warning_mock.call_args_list:
+            T.assert_equal(len(print_warning_mock.call_args_list), 1)
+            [warning] = print_warning_mock.call_args_list
+            T.assert_in('Pool disposed before input was consumed', warning[0][0])

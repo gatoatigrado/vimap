@@ -86,10 +86,18 @@ class WorkerRoutine(object):
         self.input_index = None
         self.debug("starting")
         try:
-            for output in self.fcn(self.worker_input_generator(), *self.init_args, **self.init_kwargs):
+            fcn_iter = self.fcn(self.worker_input_generator(), *self.init_args, **self.init_kwargs)
+            try:
+                iter(fcn_iter)
+            except TypeError:
+                vimap.exception_handling.print_warning(
+                    "Your worker function must yield values for inputs it consumes!",
+                    fcn_return_value=fcn_iter)
+                assert False
+            for output in fcn_iter:
                 assert self.input_index is not None, (
-                    "Produced output before getting first "
-                    "input, or multiple outputs for one input.")
+                    "Produced output before getting first input, or multiple "
+                    "outputs for one input. Output: {0}".format(output))
                 self.output_queue.put( (self.input_index, 'output', output) )
                 self.input_index = None # prevent it from producing mult. outputs
         except Exception as e:
