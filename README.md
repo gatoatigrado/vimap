@@ -12,7 +12,7 @@ What in particular makes it more flexible?
 
 What do we aspire to do better than the regular `multiprocessing` library?
 
- * You don't have to hack to achieve custom process initialization [ c.f. http://stackoverflow.com/q/2080660/81636 ]
+ * You don't have to hack to achieve custom process initialization [ c.f. http://stackoverflow.com/a/10118250/81636 ]
  * The API helps prevent dumb mistakes, like initializing a pool before you've defined relevant functions. [ http://stackoverflow.com/q/2782961/81636 ]
  * Aims to have better worker exception handling -- multiprocessing will leave around dead worker processes; we aim not to.
  * Collection of common use cases (reading from files, etc.)
@@ -48,9 +48,9 @@ Let's continue the example,
 This initializes a pool of workers. Each one gets a bound argument `server`. When the worker processes start up, they start running until they try to pull an element off of the `requests` iterator; then they must pause for the parent process to send data. The parent process can send data like so,
 
     Request = namedtuple("Request", ["uri", "data"])
-    pool.imap(Request(**ujson.loads(line)) for line in fileinput.input()).ignore_output()
+    pool.imap(Request(**ujson.loads(line)) for line in fileinput.input()).block_ignore_output()
 
-This reads lines from a file containing JSON input, and sends the loaded entries to the workers. In the real world, you'd probably want to make the workers do the JSON loading. The `.ignore_output()` will cause the entire iterable (input file) to be read, and [by default] close the pool after it's done.
+This reads lines from a file containing JSON input, and sends the loaded entries to the workers. In the real world, you'd probably want to make the workers do the JSON loading. The `.block_ignore_output()` will cause the entire iterable (input file) to be read, and [by default] close the pool after it's done.
 
 variations on imap
 ---------------------
