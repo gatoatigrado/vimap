@@ -72,13 +72,19 @@ class SerialPool(DebugPool):
 
     def spool_input(self, close_if_done=True):
         # Throw some `None`s onto the queue to stop workers
-        terminals = [None] * len(self.processes)
-        inputs = itertools.chain(self.all_input_serialized, terminals)
+        def inputs():
+            for serialized_input in self.all_input_serialized:
+                yield serialized_input
+                yield None
 
-        self.qm.spool_input(inputs)
+        self.qm.spool_input(inputs())
 
-        for worker_proc in self.processes:
-            worker_proc._target(*worker_proc._args)
+        # simulate parallelism by dispatching work to each of our workers.
+        workers = itertools.cycle(self.processes)
+
+        while not self.qm.input_queue.empty():
+            worker_proc = workers.next()
+            worker_proc._target(*worker_proc._args, **worker_proc._kwargs)
 
 
 def mock_debug_pool():

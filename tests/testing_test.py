@@ -42,7 +42,23 @@ class SerialPoolTest(T.TestCase):
 
         assert not start.called
 
+    def test_zip_in_out(self):
+        processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, 2, 3])
 
+        results = list(processes.imap([4, 4, 4]).zip_in_out(close_if_done=False))
+        T.assert_sets_equal(set(results), set([(4, 5), (4, 6), (4, 7)]))
+
+        results = list(processes.imap([4, 4, 4]).zip_in_out(close_if_done=True))
+        T.assert_sets_equal(set(results), set([(4, 5), (4, 6), (4, 7)]))
+
+    def test_zip_in_out_lots_of_input(self):
+        processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, 2, 3])
+        results = []
+        for input, output in processes.imap([4, 4, 4] * 3).zip_in_out():
+            results.append((input, output))
+        T.assert_equal(set(results[0:3]), set([(4, 5), (4, 6), (4, 7)]))
+        T.assert_equal(set(results[3:6]), set([(4, 5), (4, 6), (4, 7)]))
+        T.assert_equal(set(results[6:9]), set([(4, 5), (4, 6), (4, 7)]))
 
 
 if __name__ == '__main__':
