@@ -1,6 +1,14 @@
-tests: _PHONY
-	testify -x disabled --summary tests
+TESTIFY_OPTIONS=-x disabled --summary
 
-test: tests
+tests: _PHONY
+	testify $(TESTIFY_OPTIONS) tests
+
+test: _PHONY tests
+
+run_coverage:
+	coverage run `which testify` $(TESTIFY_OPTIONS) tests
+
+coverage: run_coverage
+	coverage report -m --include='vimap/*' --omit=''
 
 _PHONY:
