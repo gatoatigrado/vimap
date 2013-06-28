@@ -1,9 +1,12 @@
 '''
 Provides methods for tests.
 '''
-import mock
-import multiprocessing
 from collections import namedtuple
+import itertools
+import multiprocessing
+import Queue
+
+import mock
 
 import vimap.exception_handling
 import vimap.pool
@@ -38,5 +41,49 @@ class DebugPool(vimap.pool.VimapPool):
         return input_
 
 
+class SerialProcess(multiprocessing.Process):
+    """A process that doesn't actually fork."""
+
+    def start(self):
+        pass
+
+    def join(self):
+        pass
+
+
+class SerialQueueManager(vimap.queue_manager.VimapQueueManager):
+    queue_class = Queue.Queue
+    # hack
+    queue_class.close = lambda self: None
+    queue_class.join_thread = lambda self: None
+
+    def pop_output(self):
+        self.num_real_in_flight -= 1
+        return super(SerialQueueManager, self).pop_output()
+
+
+class SerialPool(DebugPool):
+    """A pool that processes input serially.
+
+    This makes attaching debuggers to worker processes easier.
+    """
+    process_class = SerialProcess
+    queue_manager_class = SerialQueueManager
+
+    def spool_input(self, close_if_done=True):
+        # Throw some `None`s onto the queue to stop workers
+        terminals = [None] * len(self.processes)
+        inputs = itertools.chain(self.all_input_serialized, terminals)
+
+        self.qm.spool_input(inputs)
+
+        for worker_proc in self.processes:
+            worker_proc._target(*worker_proc._args)
+
+
 def mock_debug_pool():
     return mock.patch.object(vimap.pool, 'VimapPool', DebugPool)
+
+def mock_serial_pool():
+    return mock.patch.object(vimap.pool, 'VimapPool', SerialPool)
+

@@ -25,13 +25,10 @@ relatively small and/or calculated ahead of time, you can write,
 from __future__ import absolute_import
 from __future__ import print_function
 
-import itertools
 import multiprocessing
 import multiprocessing.queues
-import signal
 import sys
 import time
-import traceback
 import weakref
 
 import vimap.exception_handling
@@ -42,13 +39,16 @@ import vimap.queue_manager
 class VimapPool(object):
     '''Args: Sequence of vimap workers.'''
 
+    process_class = multiprocessing.Process
+    queue_manager_class = vimap.queue_manager.VimapQueueManager
+
     # TODO: Implement timeout in joining workers
     #
     def __init__(self, worker_sequence, in_queue_size_factor=10, timeout=5.0, max_total_in_flight=100000):
         self.in_queue_size_factor = in_queue_size_factor
         self.worker_sequence = list(worker_sequence)
 
-        self.qm = vimap.queue_manager.VimapQueueManager(
+        self.qm = self.queue_manager_class(
             max_real_in_flight=self.in_queue_size_factor * len(self.worker_sequence),
             max_total_in_flight=max_total_in_flight)
 
@@ -77,7 +77,7 @@ class VimapPool(object):
         for worker in self.worker_sequence:
             routine = vimap.real_worker_routine.WorkerRoutine(
                 worker.fcn, worker.args, worker.kwargs)
-            process = multiprocessing.Process(
+            process = self.process_class(
                 target=routine.run,
                 args=(self.qm.input_queue, self.qm.output_queue))
             process.daemon = True # processes will be controlled by parent

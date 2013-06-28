@@ -1,4 +1,6 @@
 tests: _PHONY
-	testify -x disabled tests
+	testify -x disabled --summary tests
+
+test: tests
 
 _PHONY:

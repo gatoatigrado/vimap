@@ -11,13 +11,6 @@ from __future__ import print_function
 import itertools
 import multiprocessing
 import multiprocessing.queues
-import signal
-import sys
-import time
-import traceback
-
-import vimap.exception_handling
-import vimap.real_worker_routine
 
 
 # TODO: Find why this is necessary
@@ -27,6 +20,7 @@ _MAX_IN_FLIGHT = 100
 
 class VimapQueueManager(object):
     '''Args: Sequence of vimap workers.'''
+    queue_class = multiprocessing.queues.Queue
 
     def __init__(self, max_real_in_flight, max_total_in_flight):
         '''
@@ -38,8 +32,8 @@ class VimapQueueManager(object):
         '''
         self.max_real_in_flight = min(_MAX_IN_FLIGHT, max_real_in_flight)
         self.max_total_in_flight = max_total_in_flight
-        self.input_queue = multiprocessing.Queue(max_real_in_flight)
-        self.output_queue = multiprocessing.Queue(max_real_in_flight)
+        self.input_queue = self.queue_class(max_real_in_flight)
+        self.output_queue = self.queue_class(max_real_in_flight)
 
         # Temporary output queue (enqueue with `append`, dequeue with `pop(0)`).
         # Prevents threads from blocking

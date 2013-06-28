@@ -7,6 +7,7 @@ from __future__ import print_function
 
 import multiprocessing.queues
 import os
+import sys
 import traceback
 
 import vimap.exception_handling
