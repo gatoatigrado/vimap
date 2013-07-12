@@ -7,7 +7,6 @@ from __future__ import print_function
 
 import multiprocessing.queues
 import os
-import traceback
 
 import vimap.exception_handling
 
@@ -100,9 +99,10 @@ class WorkerRoutine(object):
                     "outputs for one input. Output: {0}".format(output))
                 self.output_queue.put( (self.input_index, 'output', output) )
                 self.input_index = None # prevent it from producing mult. outputs
-        except Exception as e:
-            self.debug("Got exception {0}\n{1}", e, traceback.format_exc())
-            self.output_queue.put( (self.input_index, 'exception', e) )
+        except Exception:
+            ec = vimap.exception_handling.ExceptionContext.current()
+            self.debug(ec.formatted_traceback)
+            self.output_queue.put( (self.input_index, 'exception', ec) )
 
         self.explicitly_close_queues()
         self.debug("exiting")

@@ -8,14 +8,34 @@ from __future__ import absolute_import
 from __future__ import print_function
 
 import sys
+import traceback
+from collections import namedtuple
 
 
-def print_exception(exception, traceback_, worker_):
+_ExceptionContext = namedtuple('ExceptionContext', ('value', 'formatted_traceback'))
+class ExceptionContext(_ExceptionContext):
+    '''Pickleable representation of an exception from a process.
+
+    It contains the exception value and the formatted traceback string.
+    '''
+    __slots__ = ()
+
+    @classmethod
+    def current(cls):
+        _, value, tb = sys.exc_info()
+        if value is None:
+            raise TypeError('no exception in current context')
+
+        formatted_traceback = ''.join(traceback.format_tb(tb) + [repr(value)])
+        return cls(value, formatted_traceback)
+
+
+def print_exception(ec, traceback_, worker_):
     '''Prints an exception when the user hasn't explicitly handled it. Use of
     sys.stderr.write is an attempt to avoid multiple threads munging log lines.
     '''
     exception_str = '[Worker Exception] {typ}: {exception}\n'.format(
-        typ=exception.__class__.__name__, exception=exception)
+        typ=ec.value.__class__.__name__, exception=ec.value)
     sys.stderr.flush()
     sys.stderr.write(exception_str)
     sys.stderr.flush()
