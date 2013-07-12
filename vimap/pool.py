@@ -160,7 +160,12 @@ class VimapPool(object):
         return self.input_uid_to_input.pop(uid)
 
     # === Results-consuming functions
-    def zip_in_out(self, close_if_done=True):
+    def zip_in_out_typ(self, close_if_done=True):
+        '''Yield (input, output, type) tuples for each input item processed.
+
+        type can either be 'output' or 'exception' and output will
+        contain either the output value or the exception, respectively.
+        '''
         self.spool_input(close_if_done=close_if_done)
         while (self.qm.num_total_in_flight > 0) and (not self.all_processes_died()):
             try:
@@ -170,8 +175,8 @@ class VimapPool(object):
                 if self.qm.num_total_in_flight < len(self.processes):
                     self.spool_input(close_if_done=close_if_done)
 
-                if typ == 'output':
-                    yield self.get_corresponding_input(uid, output), output
+                inp = self.get_corresponding_input(uid, output)
+                yield inp, output, typ
             except multiprocessing.queues.Empty:
                 time.sleep(0.01)
             except IOError:
@@ -181,6 +186,14 @@ class VimapPool(object):
         if close_if_done:
             self.finish_workers()
         # Return when input given is exhausted, or workers die from exceptions
+
+    def zip_in_out(self, *args, **kwargs):
+        '''Yield (input, output) tuples for each input item processed
+        skipping inputs that had an exception.
+        '''
+        for inp, output, typ in self.zip_in_out_typ(*args, **kwargs):
+            if typ == 'output':
+                yield inp, output
     # ------
 
     def block_ignore_output(self, *args, **kwargs):
