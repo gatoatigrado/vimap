@@ -73,6 +73,18 @@ class VimapPool(object):
 
     num_in_flight = property(lambda self: self.qm.num_total_in_flight)
 
+    _default_print_fcn = lambda msg: print(msg, file=sys.stderr)
+    def add_progress_notification(self, print_interval_s=1, item_type="items",
+            print_fcn=_default_print_fcn):
+        state = {'last_printed': time.time(), 'output_counter': 0}
+        def print_output_progress(item):
+            state['output_counter'] += 1
+            if time.time() - state['last_printed'] > print_interval_s:
+                state['last_printed'] = time.time()
+                print_fcn("Processed {0} {1}".format(state['output_counter'], item_type))
+        self.qm.add_output_hook(print_output_progress)
+        return self
+
     def fork(self):
         for worker in self.worker_sequence:
             routine = vimap.real_worker_routine.WorkerRoutine(
