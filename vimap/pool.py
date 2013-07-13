@@ -39,6 +39,9 @@ import vimap.real_worker_routine
 import vimap.queue_manager
 
 
+NO_INPUT = 'NO_INPUT'
+
+
 class VimapPool(object):
     '''Args: Sequence of vimap workers.'''
 
@@ -156,8 +159,12 @@ class VimapPool(object):
     # ------
 
     def get_corresponding_input(self, uid, output):
-        '''Dummy method for mocking.'''
-        return self.input_uid_to_input.pop(uid)
+        '''Find the input object given the output.
+
+        Sometimes we get an exception as output before any input has
+        been processed, thus we have no corresponding input.
+        '''
+        return self.input_uid_to_input.pop(uid, NO_INPUT)
 
     # === Results-consuming functions
     def zip_in_out_typ(self, close_if_done=True):
