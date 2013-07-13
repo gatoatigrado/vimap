@@ -70,3 +70,17 @@ possibly not in order. Since it's streaming, one shouldn't need to keep around i
     for input, output in pool.imap(iterable).zip_in_out():
         results[input] = output
     # do some more processing
+
+### Handling exceptions
+
+If you want to gracefully handle exceptions that bubble up to the main function of your worker processes, you can request that vimap yield back to you any exceptions it receives from the workers.
+
+    for input, output, typ in pool.imap(iterable).zip_in_out_typ():
+        if typ == 'exception':
+            print('Worker had an exception:')
+            print(output.formatted_traceback)
+        elif typ == 'output':
+            print('I got some actual output from a worker!')
+            print(output)
+
+`output` will be an `ExceptionContext` namedtuple if the return type is `exception`; those contain a `value` of the exception raised and `formatted_traceback` string of the traceback that would have been printed to stderr.
