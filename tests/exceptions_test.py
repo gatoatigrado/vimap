@@ -2,6 +2,7 @@ import mock
 import testify as T
 
 import vimap.exception_handling
+from vimap.exception_handling import ExceptionContext
 import vimap.pool
 import vimap.worker_process
 import vimap.testing
@@ -92,3 +93,32 @@ class ExceptionsTest(T.TestCase):
             T.assert_equal(len(print_warning_mock.call_args_list), 1)
             [warning] = print_warning_mock.call_args_list
             T.assert_in('Pool disposed before input was consumed', warning[0][0])
+
+
+class ExceptionContextTest(T.TestCase):
+    def test_no_exception_currently(self):
+        with T.assert_raises(TypeError):
+            ExceptionContext.current()
+
+    def test_formats_correctly(self):
+        expected_formatted_tb = ['Traceback:\n', 'stuff\n', 'more stuff\n']
+        expected_ex = ValueError('test')
+        expected_formatted_tb_str = """Traceback:\nstuff\nmore stuff\nValueError('test',)"""
+        expected_ec = ExceptionContext(value=expected_ex, formatted_traceback=expected_formatted_tb_str)
+        expected_tb = mock.Mock()
+        mock_exc_info = (None, expected_ex, expected_tb)
+
+        with mock.patch.object(
+            vimap.exception_handling.sys,
+            'exc_info',
+            autospec=True,
+            return_value=mock_exc_info,
+        ):
+            with mock.patch.object(
+                vimap.exception_handling.traceback,
+                'format_tb',
+                autospec=True,
+                return_value=expected_formatted_tb,
+            ):
+                found_ec = ExceptionContext.current()
+                T.assert_equal(found_ec, expected_ec)
