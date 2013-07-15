@@ -101,7 +101,7 @@ class WorkerRoutine(object):
                 self.input_index = None # prevent it from producing mult. outputs
         except Exception:
             ec = vimap.exception_handling.ExceptionContext.current()
-            self.debug(ec.formatted_traceback)
+            self.debug('{0}', ec.formatted_traceback)
             self.output_queue.put( (self.input_index, 'exception', ec) )
 
         self.explicitly_close_queues()
