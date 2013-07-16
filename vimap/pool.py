@@ -174,10 +174,7 @@ class VimapPool(object):
         contain either the output value or the exception, respectively.
         '''
         self.spool_input(close_if_done=close_if_done)
-        # Check for output at least once, in case all workers have died
-        # before this point.
-        remaining_output = True
-        while remaining_output:
+        while self.qm.num_total_in_flight > 0:
             try:
                 uid, typ, output = self.qm.pop_output()
 
@@ -188,12 +185,16 @@ class VimapPool(object):
                 inp = self.get_corresponding_input(uid, output)
                 yield inp, output, typ
             except multiprocessing.queues.Empty:
+                # If processes are still running, then just wait for
+                # more output. If not, we've exhausted the ouput and
+                # break.
+                if self.all_processes_died():
+                    break
                 time.sleep(0.01)
             except IOError:
                 print("Error getting output queue item from main process",
                     file=sys.stderr)
                 raise
-            remaining_output = self.qm.num_total_in_flight > 0 and not self.all_processes_died()
         if close_if_done:
             self.finish_workers()
         # Return when input given is exhausted, or workers die from exceptions
