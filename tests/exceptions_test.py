@@ -27,43 +27,60 @@ def serialize_error(error):
 
 
 class ExceptionsTest(T.TestCase):
-    @mock.patch.object(vimap.exception_handling, 'print_exception')
-    def test_basic_exceptions(self, print_exc_mock):
+    @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
+    def test_exception_before_iteration(self, print_exc_mock):
+        num_workers = 3
         processes = vimap.pool.fork(worker_raise_exc_immediately.init_args(init=i)
-            for i in [1, 1, 1])
-        res = list(processes.imap(list(range(1, 10))).zip_in_out())
-        T.assert_equal(res, [])
+            for i in range(num_workers))
+        # Give every worker something to chew on.
+        res = list(processes.imap(list(range(1, 10))).zip_in_out_typ())
+        res_to_compare = [
+            (inp, serialize_error(ec.value), typ)
+            for inp, ec, typ
+            in res
+        ]
+        expected_res_to_compare = [
+            (vimap.pool.NO_INPUT, serialize_error(ValueError("hello")), 'exception'),
+        ] * num_workers
+        # Each worker will stop processing once an exception makes it to
+        # the top.
+        T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
         T.assert_equal(processes.finished_workers, True)
 
-        calls = print_exc_mock.call_args_list
-        errors = [serialize_error(call[0][0]) for call in calls]
-        T.assert_equal(errors, [serialize_error(ValueError("hello"))] * 3)
-
-    @mock.patch.object(vimap.exception_handling, 'print_exception')
+    @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_exception_with_curleys(self, print_exc_mock):
         '''Dumb test ... I aim to write tests for most every bug that had existed,
         but this is kinda 1-off ... (.format() got a curley brace).
         '''
+        num_workers = 3
         processes = vimap.pool.fork(worker_raise_exc_with_curleys.init_args(init='{a}')
-            for _ in [1, 1, 1])
-        res = list(processes.imap(list(range(1, 10))).zip_in_out())
-        T.assert_equal(res, [])
+            for _ in range(num_workers))
+        # Give every working something to chew on.
+        res = list(processes.imap(list(range(1, 10))).zip_in_out_typ())
+        res_to_compare = [
+            (serialize_error(ec.value), typ)
+            for _, ec, typ
+            in res
+        ]
+        expected_res_to_compare = [
+            (serialize_error(ValueError("{0} curley braces!")), 'exception'),
+        ] * num_workers
+        # Each worker will stop processing once an exception makes it to
+        # the top.
+        T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
+        T.assert_equal(processes.finished_workers, True)
 
-        calls = print_exc_mock.call_args_list
-        errors = [serialize_error(call[0][0]) for call in calls]
-        T.assert_equal(errors, [serialize_error(ValueError("{0} curley braces!"))] * 3)
-
-    @mock.patch.object(vimap.exception_handling, 'print_exception')
+    @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_unconsumed_exceptions(self, print_exc_mock):
         processes = vimap.pool.fork(worker_raise_exc_immediately.init_args(init=i)
             for i in [1, 1, 1])
         del processes
 
         calls = print_exc_mock.call_args_list
-        errors = [serialize_error(call[0][0]) for call in calls]
+        errors = [serialize_error(call_args[0].value) for call_args, _ in calls]
         T.assert_equal(errors, [serialize_error(ValueError("hello"))] * 3)
 
-    @mock.patch.object(vimap.exception_handling, 'print_exception')
+    @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_a_few_error(self, print_exc_mock):
         processes = vimap.pool.fork((worker_raise_exc_with_curleys.init_args(init=i)
             for i in xrange(2)), in_queue_size_factor=2)
@@ -71,11 +88,11 @@ class ExceptionsTest(T.TestCase):
         del processes
 
         calls = print_exc_mock.call_args_list
-        errors = [serialize_error(call[0][0]) for call in calls]
+        errors = [serialize_error(call_args[0].value) for call_args, _ in calls]
         T.assert_equal(errors, [serialize_error(ValueError("{0} curley braces!"))])
 
-    @mock.patch.object(vimap.exception_handling, 'print_warning')
-    @mock.patch.object(vimap.exception_handling, 'print_exception')
+    @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
+    @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_fail_after_a_while(self, print_exc_mock, print_warning_mock):
         processes = vimap.pool.fork((worker_raise_exc_with_curleys.init_args(init=i)
             for i in xrange(100)), in_queue_size_factor=2)
@@ -83,7 +100,7 @@ class ExceptionsTest(T.TestCase):
         del processes
 
         calls = print_exc_mock.call_args_list
-        errors = [serialize_error(call[0][0]) for call in calls]
+        errors = [serialize_error(call_args[0].value) for call_args, _ in calls]
         T.assert_equal(errors, [serialize_error(ValueError("{0} curley braces!"))] * 50)
 
         # NOTE: Sometimes, the weakref in the pool is deleted, so 'has_exceptions' is
