@@ -22,6 +22,13 @@ def worker_raise_exc_with_curleys(seq, init=0):
         yield
 
 
+@vimap.worker_process.worker
+def worker_raise_exc_after_iteration(seq, init=0):
+    for x in seq:
+        yield x
+    raise ValueError("goodbye")
+
+
 def serialize_error(error):
     return (type(error), str(error))
 
@@ -39,11 +46,33 @@ class ExceptionsTest(T.TestCase):
             for inp, ec, typ
             in res
         ]
+        # Each worker will stop processing once an exception makes it to
+        # the top so we only get that number of exceptions back out.
         expected_res_to_compare = [
             (vimap.pool.NO_INPUT, serialize_error(ValueError("hello")), 'exception'),
         ] * num_workers
-        # Each worker will stop processing once an exception makes it to
-        # the top.
+        T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
+        T.assert_equal(processes.finished_workers, True)
+
+    @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
+    def test_exception_after_iteration_not_returned(self, print_exc_mock):
+        num_workers = 3
+        processes = vimap.pool.fork(worker_raise_exc_after_iteration.init_args(init=i)
+            for i in range(num_workers))
+        # Give every worker something to chew on.
+        res = list(processes.imap(list(range(1, 10))).zip_in_out_typ())
+        res_to_compare = [
+            (inp, out, typ)
+            for inp, out, typ
+            in res
+        ]
+        # The pool notices that all output has been returned, so doesn't
+        # wait for any more responses. We shouldn't see exceptions.
+        expected_res_to_compare = [
+            (inp, inp, 'output')
+            for inp
+            in range(1, 10)
+        ]
         T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
         T.assert_equal(processes.finished_workers, True)
 
@@ -62,11 +91,11 @@ class ExceptionsTest(T.TestCase):
             for _, ec, typ
             in res
         ]
+        # Each worker will stop processing once an exception makes it to
+        # the top so we only get that number of exceptions back out.
         expected_res_to_compare = [
             (serialize_error(ValueError("{0} curley braces!")), 'exception'),
         ] * num_workers
-        # Each worker will stop processing once an exception makes it to
-        # the top.
         T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
         T.assert_equal(processes.finished_workers, True)
 
