@@ -39,6 +39,9 @@ import vimap.real_worker_routine
 import vimap.queue_manager
 
 
+NO_INPUT = 'NO_INPUT'
+
+
 class VimapPool(object):
     '''Args: Sequence of vimap workers.'''
 
@@ -168,13 +171,22 @@ class VimapPool(object):
     # ------
 
     def get_corresponding_input(self, uid, output):
-        '''Dummy method for mocking.'''
-        return self.input_uid_to_input.pop(uid)
+        '''Find the input object given the output.
+
+        Sometimes we get an exception as output before any input has
+        been processed, thus we have no corresponding input.
+        '''
+        return self.input_uid_to_input.pop(uid, NO_INPUT)
 
     # === Results-consuming functions
-    def zip_in_out(self, close_if_done=True):
+    def zip_in_out_typ(self, close_if_done=True):
+        '''Yield (input, output, type) tuples for each input item processed.
+
+        type can either be 'output' or 'exception' and output will
+        contain either the output value or the exception, respectively.
+        '''
         self.spool_input(close_if_done=close_if_done)
-        while (self.qm.num_total_in_flight > 0) and (not self.all_processes_died()):
+        while self.qm.num_total_in_flight > 0:
             try:
                 uid, typ, output = self.qm.pop_output()
 
@@ -182,9 +194,14 @@ class VimapPool(object):
                 if self.qm.num_total_in_flight < len(self.processes):
                     self.spool_input(close_if_done=close_if_done)
 
-                if typ == 'output':
-                    yield self.get_corresponding_input(uid, output), output
+                inp = self.get_corresponding_input(uid, output)
+                yield inp, output, typ
             except multiprocessing.queues.Empty:
+                # If processes are still running, then just wait for
+                # more output. If not, we've exhausted the ouput and
+                # break.
+                if self.all_processes_died():
+                    break
                 time.sleep(0.01)
             except IOError:
                 print("Error getting output queue item from main process",
@@ -193,6 +210,14 @@ class VimapPool(object):
         if close_if_done:
             self.finish_workers()
         # Return when input given is exhausted, or workers die from exceptions
+
+    def zip_in_out(self, *args, **kwargs):
+        '''Yield (input, output) tuples for each input item processed
+        skipping inputs that had an exception.
+        '''
+        for inp, output, typ in self.zip_in_out_typ(*args, **kwargs):
+            if typ == 'output':
+                yield inp, output
     # ------
 
     def block_ignore_output(self, *args, **kwargs):
