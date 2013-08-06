@@ -116,7 +116,9 @@ class VimapPool(object):
     @vimap.util.instancemethod_runonce()
     def send_stop_tokens(self):
         '''Sends stop tokens to the worker processes, telling them to shut
-        down.
+        down. Note that normal inputs are of the form (idx, value), whereas
+        the stop token is not a tuple, so inputs can't be mistaken for stop
+        tokens and vice-versa.
         '''
         for _ in self.processes:
             self.qm.input_queue.put(None)
@@ -128,7 +130,6 @@ class VimapPool(object):
         # queue as processes die, or else other processes may not
         # be able to enqueue their final items to the output queue
         # (since it's full).
-        self.qm.feed_out_to_tmp(max_time_s=None)
         while not self.all_processes_died(exception_check_optimization=False):
             self.qm.feed_out_to_tmp(max_time_s=None)
             time.sleep(0.001)
@@ -138,6 +139,9 @@ class VimapPool(object):
     def finish_workers(self):
         '''Sends stop tokens to subprocesses, then joins them. There may still be
         unconsumed output.
+
+        This method is called when you call zip_in_out() with finish_workers=True
+        (the default), as well as when the GC reclaims the pool.
         '''
         if self.debug:
             print("Main thread: Finishing workers")

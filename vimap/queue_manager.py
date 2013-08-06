@@ -62,8 +62,16 @@ class VimapQueueManager(object):
         self.num_real_in_flight += 1
 
     def feed_out_to_tmp(self, max_time_s=None):
-        '''Feeds output to temporary queue until there's none left, or it's
-        been longer than max_time_s.
+        '''Feeds output to temporary queue "heuristically". We're always
+        guaranteed to take the first element, if it exists at the time
+        feed_out_to_tmp is called.  After that, if it's longer than
+        `max_time_s`, we exit. If `max_time_s` is None, then we'll take
+        all elements on the output queue.
+
+        Currently, this method is called by pop_output, spool_input, and
+        the Pool's finish_workers. All of these methods are called once
+        in the loop of getting output elements, so it's okay if we don't
+        dequeue all elements from the queue (or more arrive later).
 
         The use of `max_time_s` is to keep things "streaming" -- if it takes
         a long time to transfer data back, it might be worth skipping out

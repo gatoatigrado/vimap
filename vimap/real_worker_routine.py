@@ -1,6 +1,9 @@
 '''
 The real worker routine used by vimap.pool. This provides a runnable which
 consumes from an input queue, and enqueues results to an output queue.
+
+TODO: Change debug print to use `logging`. This will require some real
+testing though...
 '''
 from __future__ import absolute_import
 from __future__ import print_function

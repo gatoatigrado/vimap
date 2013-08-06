@@ -12,7 +12,8 @@ def instancemethod_runonce(depends=()):
     def inner(fcn):
         @functools.wraps(fcn)
         def fcn_helper(self, *args, **kwargs):
-            setattr(self, '__runonce__', getattr(self, '__runonce__', {}))
+            if not hasattr(self, '__runonce__'):
+                setattr(self, '__runonce__', {})
             for fcn_name in depends:
                 assert self.__runonce__.get(fcn_name), (
                     "Function {0} depends on {1}".format(fcn.__name__, fcn_name))

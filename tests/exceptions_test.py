@@ -50,8 +50,14 @@ def run_test_pool(worker_f):
 
 
 class ExceptionsTest(T.TestCase):
+    def check_died_prematurely_warning(self, print_warning_mock):
+        T.assert_gte(print_warning_mock.call_args_list, 1)
+        for (args, kwargs) in print_warning_mock.call_args_list:
+            T.assert_equal(args, ('All processes died prematurely!',))
+
+    @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
-    def test_exception_before_iteration(self, print_exc_mock):
+    def test_exception_before_iteration(self, print_exc_mock, print_warning_mock):
         res_to_compare = [
             (inp, serialize_error(ec.value), typ)
             for inp, ec, typ
@@ -63,6 +69,7 @@ class ExceptionsTest(T.TestCase):
             (vimap.pool.NO_INPUT, serialize_error(ValueError("hello")), 'exception'),
         ] * 3
         T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
+        self.check_died_prematurely_warning(print_warning_mock)
 
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_exception_after_iteration_not_returned(self, print_exc_mock):
@@ -80,8 +87,9 @@ class ExceptionsTest(T.TestCase):
         ]
         T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
 
+    @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
-    def test_exception_with_curleys(self, print_exc_mock):
+    def test_exception_with_curleys(self, print_exc_mock, print_warning_mock):
         '''Dumb test ... I aim to write tests for most every bug that had existed,
         but this is kinda 1-off ... (.format() got a curley brace).
         '''
@@ -98,6 +106,7 @@ class ExceptionsTest(T.TestCase):
             (serialize_error(ValueError("{0} curley braces!")), 'exception'),
         ] * 3
         T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
+        self.check_died_prematurely_warning(print_warning_mock)
 
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_unconsumed_exceptions(self, print_exc_mock):
