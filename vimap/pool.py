@@ -25,18 +25,16 @@ relatively small and/or calculated ahead of time, you can write,
 from __future__ import absolute_import
 from __future__ import print_function
 
-import itertools
 import multiprocessing
 import multiprocessing.queues
-import signal
 import sys
 import time
-import traceback
 import weakref
 
 import vimap.exception_handling
-import vimap.real_worker_routine
 import vimap.queue_manager
+import vimap.real_worker_routine
+import vimap.util
 
 
 NO_INPUT = 'NO_INPUT'
@@ -47,13 +45,15 @@ class VimapPool(object):
 
     # TODO: Implement timeout in joining workers
     #
-    def __init__(self, worker_sequence, in_queue_size_factor=10, timeout=5.0, max_total_in_flight=100000):
+    def __init__(self, worker_sequence, in_queue_size_factor=10, timeout=5.0,
+            max_total_in_flight=100000, debug=False):
         self.in_queue_size_factor = in_queue_size_factor
         self.worker_sequence = list(worker_sequence)
 
         self.qm = vimap.queue_manager.VimapQueueManager(
             max_real_in_flight=self.in_queue_size_factor * len(self.worker_sequence),
-            max_total_in_flight=max_total_in_flight)
+            max_total_in_flight=max_total_in_flight,
+            debug=debug)
 
         # Don't prevent `self` from being GC'd
         self_ref = weakref.ref(self)
@@ -71,8 +71,8 @@ class VimapPool(object):
         self.input_uid_ctr = 0
         self.input_uid_to_input = {} # input to keep around until handled
         self.input_sequences = []
-        self.finished_workers = False
         self.has_exceptions = False # Have any workers thrown exceptions yet?
+        self.debug = debug
 
     num_in_flight = property(lambda self: self.qm.num_total_in_flight)
 
@@ -88,10 +88,11 @@ class VimapPool(object):
         self.qm.add_output_hook(print_output_progress)
         return self
 
-    def fork(self):
-        for worker in self.worker_sequence:
+    def fork(self, debug=None):
+        debug = self.debug if debug is None else debug
+        for i, worker in enumerate(self.worker_sequence):
             routine = vimap.real_worker_routine.WorkerRoutine(
-                worker.fcn, worker.args, worker.kwargs)
+                worker.fcn, worker.args, worker.kwargs, index=i, debug=debug)
             process = multiprocessing.Process(
                 target=routine.run,
                 args=(self.qm.input_queue, self.qm.output_queue))
@@ -112,21 +113,36 @@ class VimapPool(object):
             return False
         return not any(p.is_alive() for p in self.processes)
 
+    @vimap.util.instancemethod_runonce()
+    def send_stop_tokens(self):
+        '''Sends stop tokens to the worker processes, telling them to shut
+        down.
+        '''
+        for _ in self.processes:
+            self.qm.input_queue.put(None)
+
+    @vimap.util.instancemethod_runonce(depends=['send_stop_tokens'])
+    def join_and_consume_output(self):
+        # This will feed items from the output queue until it's
+        # empty. However, we need to keep spooling from the output
+        # queue as processes die, or else other processes may not
+        # be able to enqueue their final items to the output queue
+        # (since it's full).
+        self.qm.feed_out_to_tmp(max_time_s=None)
+        while not self.all_processes_died(exception_check_optimization=False):
+            self.qm.feed_out_to_tmp(max_time_s=None)
+            time.sleep(0.001)
+        self.qm.feed_out_to_tmp(max_time_s=None)
+
+    @vimap.util.instancemethod_runonce()
     def finish_workers(self):
         '''Sends stop tokens to subprocesses, then joins them. There may still be
         unconsumed output.
         '''
-        if not self.finished_workers:
-            for _ in self.processes:
-                self.qm.input_queue.put(None)
-            for process in self.processes:
-                process.join()
-
-            # Print any exceptions and finish up the output queue
-            if not self.qm.output_queue.empty():
-                self.qm.feed_out_to_tmp()
-
-            self.finished_workers = True
+        if self.debug:
+            print("Main thread: Finishing workers")
+        self.send_stop_tokens()
+        self.join_and_consume_output()
 
     # === Input-enqueueing functionality
     def imap(self, input_sequence, pretransform=False):
@@ -163,11 +179,13 @@ class VimapPool(object):
             return (uid, xser)
         return (get_serialized(x) for seq in self.input_sequences for x in seq)
 
-    def spool_input(self, close_if_done=True):
-        '''Put input on the queue, and closes workers if we're all done.
+    def spool_input(self, close_if_done=False):
+        '''Put input on the queue. If `close_if_done` and we reach the end
+        of the input stream, send stop tokens.
         '''
         if self.qm.spool_input(self.all_input_serialized) and close_if_done:
-            self.finish_workers()
+            # reached the end of the stream
+            self.send_stop_tokens()
     # ------
 
     def get_corresponding_input(self, uid, output):
@@ -185,7 +203,7 @@ class VimapPool(object):
         type can either be 'output' or 'exception' and output will
         contain either the output value or the exception, respectively.
         '''
-        self.spool_input(close_if_done=close_if_done)
+        self.spool_input()
         while self.qm.num_total_in_flight > 0:
             try:
                 uid, typ, output = self.qm.pop_output()
@@ -201,6 +219,10 @@ class VimapPool(object):
                 # more output. If not, we've exhausted the ouput and
                 # break.
                 if self.all_processes_died():
+                    # num_total_in_flight is messed up (will always be
+                    # positive). We must exit.
+                    vimap.exception_handling.print_warning(
+                        "All processes died prematurely!")
                     break
                 time.sleep(0.01)
             except IOError:

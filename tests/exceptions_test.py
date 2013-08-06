@@ -2,10 +2,10 @@ import mock
 import testify as T
 
 import vimap.exception_handling
-from vimap.exception_handling import ExceptionContext
 import vimap.pool
-import vimap.worker_process
 import vimap.testing
+import vimap.worker_process
+from vimap.exception_handling import ExceptionContext
 
 
 @vimap.worker_process.worker
@@ -45,7 +45,7 @@ def run_test_pool(worker_f):
     # Give every worker something to chew on.
     res = list(processes.imap(list(range(1, 10))).zip_in_out_typ())
     # They should all be done by this point.
-    T.assert_equal(processes.finished_workers, True)
+    T.assert_equal(processes.__runonce__['finish_workers'], True)
     return res
 
 
@@ -101,7 +101,8 @@ class ExceptionsTest(T.TestCase):
 
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_unconsumed_exceptions(self, print_exc_mock):
-        '''Unconsumed exceptions should only be printed.'''
+        '''Unconsumed exceptions should only be printed.
+        '''
         processes = vimap.pool.fork(worker_raise_exc_immediately.init_args(init=i)
             for i in [1, 1, 1])
         del processes
