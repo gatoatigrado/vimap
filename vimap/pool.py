@@ -32,8 +32,12 @@ import time
 import weakref
 
 import vimap.exception_handling
-import vimap.real_worker_routine
 import vimap.queue_manager
+import vimap.real_worker_routine
+import vimap.util
+
+
+NO_INPUT = 'NO_INPUT'
 
 
 class VimapPool(object):
@@ -44,13 +48,15 @@ class VimapPool(object):
 
     # TODO: Implement timeout in joining workers
     #
-    def __init__(self, worker_sequence, in_queue_size_factor=10, timeout=5.0, max_total_in_flight=100000):
+    def __init__(self, worker_sequence, in_queue_size_factor=10, timeout=5.0,
+            max_total_in_flight=100000, debug=False):
         self.in_queue_size_factor = in_queue_size_factor
         self.worker_sequence = list(worker_sequence)
 
         self.qm = self.queue_manager_class(
             max_real_in_flight=self.in_queue_size_factor * len(self.worker_sequence),
-            max_total_in_flight=max_total_in_flight)
+            max_total_in_flight=max_total_in_flight,
+            debug=debug)
 
         # Don't prevent `self` from being GC'd
         self_ref = weakref.ref(self)
@@ -68,15 +74,28 @@ class VimapPool(object):
         self.input_uid_ctr = 0
         self.input_uid_to_input = {} # input to keep around until handled
         self.input_sequences = []
-        self.finished_workers = False
         self.has_exceptions = False # Have any workers thrown exceptions yet?
+        self.debug = debug
 
     num_in_flight = property(lambda self: self.qm.num_total_in_flight)
 
-    def fork(self):
-        for worker in self.worker_sequence:
+    _default_print_fcn = lambda msg: print(msg, file=sys.stderr)
+    def add_progress_notification(self, print_interval_s=1, item_type="items",
+            print_fcn=_default_print_fcn):
+        state = {'last_printed': time.time(), 'output_counter': 0}
+        def print_output_progress(item):
+            state['output_counter'] += 1
+            if time.time() - state['last_printed'] > print_interval_s:
+                state['last_printed'] = time.time()
+                print_fcn("Processed {0} {1}".format(state['output_counter'], item_type))
+        self.qm.add_output_hook(print_output_progress)
+        return self
+
+    def fork(self, debug=None):
+        debug = self.debug if debug is None else debug
+        for i, worker in enumerate(self.worker_sequence):
             routine = vimap.real_worker_routine.WorkerRoutine(
-                worker.fcn, worker.args, worker.kwargs)
+                worker.fcn, worker.args, worker.kwargs, index=i, debug=debug)
             process = self.process_class(
                 target=routine.run,
                 args=(self.qm.input_queue, self.qm.output_queue))
@@ -97,21 +116,40 @@ class VimapPool(object):
             return False
         return not any(p.is_alive() for p in self.processes)
 
+    @vimap.util.instancemethod_runonce()
+    def send_stop_tokens(self):
+        '''Sends stop tokens to the worker processes, telling them to shut
+        down. Note that normal inputs are of the form (idx, value), whereas
+        the stop token is not a tuple, so inputs can't be mistaken for stop
+        tokens and vice-versa.
+        '''
+        for _ in self.processes:
+            self.qm.input_queue.put(None)
+
+    @vimap.util.instancemethod_runonce(depends=['send_stop_tokens'])
+    def join_and_consume_output(self):
+        # This will feed items from the output queue until it's
+        # empty. However, we need to keep spooling from the output
+        # queue as processes die, or else other processes may not
+        # be able to enqueue their final items to the output queue
+        # (since it's full).
+        while not self.all_processes_died(exception_check_optimization=False):
+            self.qm.feed_out_to_tmp(max_time_s=None)
+            time.sleep(0.001)
+        self.qm.feed_out_to_tmp(max_time_s=None)
+
+    @vimap.util.instancemethod_runonce()
     def finish_workers(self):
         '''Sends stop tokens to subprocesses, then joins them. There may still be
         unconsumed output.
+
+        This method is called when you call zip_in_out() with finish_workers=True
+        (the default), as well as when the GC reclaims the pool.
         '''
-        if not self.finished_workers:
-            for _ in self.processes:
-                self.qm.input_queue.put(None)
-            for process in self.processes:
-                process.join()
-
-            # Print any exceptions and finish up the output queue
-            if not self.qm.output_queue.empty():
-                self.qm.feed_out_to_tmp()
-
-            self.finished_workers = True
+        if self.debug:
+            print("Main thread: Finishing workers")
+        self.send_stop_tokens()
+        self.join_and_consume_output()
 
     # === Input-enqueueing functionality
     def imap(self, input_sequence, pretransform=False):
@@ -148,21 +186,32 @@ class VimapPool(object):
             return (uid, xser)
         return (get_serialized(x) for seq in self.input_sequences for x in seq)
 
-    def spool_input(self, close_if_done=True):
-        '''Put input on the queue, and closes workers if we're all done.
+    def spool_input(self, close_if_done=False):
+        '''Put input on the queue. If `close_if_done` and we reach the end
+        of the input stream, send stop tokens.
         '''
         if self.qm.spool_input(self.all_input_serialized) and close_if_done:
-            self.finish_workers()
+            # reached the end of the stream
+            self.send_stop_tokens()
     # ------
 
     def get_corresponding_input(self, uid, output):
-        '''Dummy method for mocking.'''
-        return self.input_uid_to_input.pop(uid)
+        '''Find the input object given the output.
+
+        Sometimes we get an exception as output before any input has
+        been processed, thus we have no corresponding input.
+        '''
+        return self.input_uid_to_input.pop(uid, NO_INPUT)
 
     # === Results-consuming functions
-    def zip_in_out(self, close_if_done=True):
-        self.spool_input(close_if_done=close_if_done)
-        while (self.qm.num_total_in_flight > 0) and (not self.all_processes_died()):
+    def zip_in_out_typ(self, close_if_done=True):
+        '''Yield (input, output, type) tuples for each input item processed.
+
+        type can either be 'output' or 'exception' and output will
+        contain either the output value or the exception, respectively.
+        '''
+        self.spool_input()
+        while self.qm.num_total_in_flight > 0:
             try:
                 uid, typ, output = self.qm.pop_output()
 
@@ -170,9 +219,18 @@ class VimapPool(object):
                 if self.qm.num_total_in_flight < len(self.processes):
                     self.spool_input(close_if_done=close_if_done)
 
-                if typ == 'output':
-                    yield self.get_corresponding_input(uid, output), output
+                inp = self.get_corresponding_input(uid, output)
+                yield inp, output, typ
             except multiprocessing.queues.Empty:
+                # If processes are still running, then just wait for
+                # more output. If not, we've exhausted the ouput and
+                # break.
+                if self.all_processes_died():
+                    # num_total_in_flight is messed up (will always be
+                    # positive). We must exit.
+                    vimap.exception_handling.print_warning(
+                        "All processes died prematurely!")
+                    break
                 time.sleep(0.01)
             except IOError:
                 print("Error getting output queue item from main process",
@@ -181,6 +239,14 @@ class VimapPool(object):
         if close_if_done:
             self.finish_workers()
         # Return when input given is exhausted, or workers die from exceptions
+
+    def zip_in_out(self, *args, **kwargs):
+        '''Yield (input, output) tuples for each input item processed
+        skipping inputs that had an exception.
+        '''
+        for inp, output, typ in self.zip_in_out_typ(*args, **kwargs):
+            if typ == 'output':
+                yield inp, output
     # ------
 
     def block_ignore_output(self, *args, **kwargs):

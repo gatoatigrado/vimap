@@ -1,6 +1,9 @@
 '''
 The real worker routine used by vimap.pool. This provides a runnable which
 consumes from an input queue, and enqueues results to an output queue.
+
+TODO: Change debug print to use `logging`. This will require some real
+testing though...
 '''
 from __future__ import absolute_import
 from __future__ import print_function
@@ -8,34 +11,30 @@ from __future__ import print_function
 import multiprocessing.queues
 import os
 import sys
-import traceback
 
 import vimap.exception_handling
-
-
-#debug = print
-debug = lambda *args, **kwargs: None
 
 
 _IDLE_TIMEOUT = 0.02
 
 class WorkerRoutine(object):
-    def __init__(self, fcn, init_args, init_kwargs):
+    def __init__(self, fcn, init_args, init_kwargs, index, debug):
         self.fcn = fcn
         self.init_args = init_args
         self.init_kwargs = dict(init_kwargs)
         self.init_kwargs_str = str(self.init_kwargs) # for debug printing
+        self.index, self.debug_enabled = index, debug
 
     def debug(self, message, *fmt_args, **fmt_kwargs):
-        debug("Worker[pid {0}, kwargs {1}] {2}".format(
-            os.getpid(), self.init_kwargs_str, message.format(*fmt_args, **fmt_kwargs)))
+        if self.debug_enabled:
+            print("Worker[{0}] {1}".format(
+                self.index, message.format(*fmt_args, **fmt_kwargs)))
 
     def worker_input_generator(self):
         '''Call this on the worker processes: yields input.'''
         while True:
             try:
                 x = self.input_queue.get(timeout=_IDLE_TIMEOUT)
-                # print("Got {0} from input queue.".format(x))
                 if x is None:
                     return
                 if self.input_index is not None:
@@ -43,6 +42,7 @@ class WorkerRoutine(object):
                         "Didn't produce an output for input!",
                         input_index=self.input_index)
                 self.input_index, z = x
+                self.debug("Got input #{0}", self.input_index)
                 yield z
             except multiprocessing.queues.Empty:
                 # print("Waiting")
@@ -85,7 +85,7 @@ class WorkerRoutine(object):
         '''
         self.input_queue, self.output_queue = input_queue, output_queue
         self.input_index = None
-        self.debug("starting")
+        self.debug("starting; PID {0}, init kwargs {1}", os.getpid(), self.init_kwargs_str)
         try:
             fcn_iter = self.fcn(self.worker_input_generator(), *self.init_args, **self.init_kwargs)
             try:
@@ -99,11 +99,13 @@ class WorkerRoutine(object):
                 assert self.input_index is not None, (
                     "Produced output before getting first input, or multiple "
                     "outputs for one input. Output: {0}".format(output))
+                self.debug("Produced output for input #{0}", self.input_index)
                 self.output_queue.put( (self.input_index, 'output', output) )
                 self.input_index = None # prevent it from producing mult. outputs
-        except Exception as e:
-            self.debug("Got exception {0}\n{1}", e, traceback.format_exc())
-            self.output_queue.put( (self.input_index, 'exception', e) )
+        except Exception:
+            ec = vimap.exception_handling.ExceptionContext.current()
+            self.debug('{0}', ec.formatted_traceback)
+            self.output_queue.put( (self.input_index, 'exception', ec) )
 
         self.explicitly_close_queues()
         self.debug("exiting")

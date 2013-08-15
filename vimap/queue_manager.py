@@ -11,6 +11,7 @@ from __future__ import print_function
 import itertools
 import multiprocessing
 import multiprocessing.queues
+import time
 
 
 # TODO: Find why this is necessary
@@ -22,7 +23,7 @@ class VimapQueueManager(object):
     '''Args: Sequence of vimap workers.'''
     queue_class = multiprocessing.queues.Queue
 
-    def __init__(self, max_real_in_flight, max_total_in_flight):
+    def __init__(self, max_real_in_flight, max_total_in_flight, debug=False):
         '''
         Arguments:
             max_real_in_flight -- number of in-flight operations sent to
@@ -44,6 +45,7 @@ class VimapQueueManager(object):
         self.num_real_in_flight = 0
 
         self.output_hooks = []
+        self.debug = debug
 
     def add_output_hook(self, hook):
         '''Add a function which will be executed immediately when output is
@@ -60,21 +62,44 @@ class VimapQueueManager(object):
         self.input_queue.put(x)
         self.num_real_in_flight += 1
 
-    def feed_out_to_tmp(self):
-        '''Feeds output to temporary queue until there's none left.'''
-        while True:
+    def feed_out_to_tmp(self, max_time_s=None):
+        '''Feeds output to temporary queue "heuristically". We're always
+        guaranteed to take the first element, if it exists at the time
+        feed_out_to_tmp is called.  After that, if it's longer than
+        `max_time_s`, we exit. If `max_time_s` is None, then we'll take
+        all elements on the output queue.
+
+        Currently, this method is called by pop_output, spool_input, and
+        the Pool's finish_workers. All of these methods are called once
+        in the loop of getting output elements, so it's okay if we don't
+        dequeue all elements from the queue (or more arrive later).
+
+        The use of `max_time_s` is to keep things "streaming" -- if it takes
+        a long time to transfer data back, it might be worth skipping out
+        of here and continuing the main process, so it can e.g. queue more
+        input and keep workers busy.
+        '''
+        start_time = time.time()
+        while (max_time_s is None) or (time.time() - start_time < max_time_s):
             try:
                 item = self.output_queue.get_nowait()
+                self.num_real_in_flight -= 1 # only decrement if no exceptions were thrown
+
+                if self.debug:
+                    print("Main thread: got item #{0}".format(item[0]))
                 for hook in self.output_hooks:
                     hook(item)
                 self.tmp_output_queue.append(item)
-                self.num_real_in_flight -= 1 # only decrement if no exceptions were thrown
             except multiprocessing.queues.Empty:
                 break
 
     def pop_output(self):
         '''Essentially a buffered version of output_queue.get_nowait().'''
-        self.feed_out_to_tmp()
+        if self.debug:
+            print("Main thread: feeding output --> tmp ...")
+        self.feed_out_to_tmp(max_time_s=1)
+        if self.debug:
+            print("... Main thread done feeding output")
         if self.tmp_output_queue:
             return self.tmp_output_queue.pop(0)
         else:
