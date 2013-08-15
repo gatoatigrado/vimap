@@ -53,13 +53,33 @@ class SerialPoolTest(T.TestCase):
 
     def test_zip_in_out_lots_of_input(self):
         processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, 2, 3])
-        results = []
-        for input, output in processes.imap([4, 4, 4] * 3).zip_in_out():
-            results.append((input, output))
+        results = list(processes.imap([4, 4, 4] * 3).zip_in_out())
         T.assert_equal(set(results[0:3]), set([(4, 5), (4, 6), (4, 7)]))
         T.assert_equal(set(results[3:6]), set([(4, 5), (4, 6), (4, 7)]))
         T.assert_equal(set(results[6:9]), set([(4, 5), (4, 6), (4, 7)]))
 
+    def test_zip_in_out_more_workers_than_input(self):
+        processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, -1, 0])
+        results = list(processes.imap([4, 4]).zip_in_out())
+        T.assert_equal(set(results), set([(4, 5), (4, 3)]))
+
+    def test_zip_in_out_no_input(self):
+        processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, -1, 0])
+        results = processes.imap([]).zip_in_out()
+        T.assert_equal(set(results), set([]))
+
+
+class NoWarningsTest(T.TestCase):
+
+	def test_no_warnings(self):
+		with mock.patch('sys.stderr') as stderr:
+			vimap.exception_handling.print_warning('')
+			stderr.write.assert_called()
+			stderr.flush.assert_called()
+
+		with T.assert_raises(AssertionError):
+			with vimap.testing.no_warnings():
+				vimap.exception_handling.print_warning('')
 
 if __name__ == '__main__':
     T.run()
