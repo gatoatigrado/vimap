@@ -50,4 +50,4 @@ class PerformanceTest(T.TestCase):
         efficiency = speedup_ratio / linear_speedup_ratio
         print("Easy performance test efficiency: {0:.1f}% ({1:.1f}x speedup)".format(
             efficiency * 100., speedup_ratio))
-        T.assert_gt(efficiency, 0.80, "Failed performance test!!")
+        T.assert_gt(efficiency, 0.70, "Failed performance test!!")
