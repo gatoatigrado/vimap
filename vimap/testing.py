@@ -4,12 +4,12 @@ Provides methods for tests.
 from collections import namedtuple
 import itertools
 import multiprocessing
-import Queue
 
 import mock
 
 import vimap.exception_handling
 import vimap.pool
+import vimap.real_worker_routine
 
 DebugResult = namedtuple('DebugResult', ['uid', 'input', 'output'])
 
@@ -42,7 +42,7 @@ class DebugPool(vimap.pool.VimapPool):
 
 
 class SerialProcess(multiprocessing.Process):
-    """A process that doesn't actually fork."""
+    '''A process that doesn't actually fork.'''
 
     def start(self):
         pass
@@ -51,40 +51,44 @@ class SerialProcess(multiprocessing.Process):
         pass
 
 
-class SerialQueueManager(vimap.queue_manager.VimapQueueManager):
-    queue_class = Queue.Queue
-    # hack
-    queue_class.close = lambda self: None
-    queue_class.join_thread = lambda self: None
+class SerialWorkerRoutine(vimap.real_worker_routine.WorkerRoutine):
+    '''A routine that doesn't need queues for input/output.'''
 
-    def pop_output(self):
-        self.num_real_in_flight -= 1
-        return super(SerialQueueManager, self).pop_output()
+    def explicitly_close_queues(self):
+        '''Don't close queues, since we haven't actually forked!'''
+        pass
+
+    def worker_input_generator(self):
+        '''Only step our workers once.'''
+        try:
+            self.input_index, next_input = self.input_queue.get()
+            yield next_input
+        except TypeError:
+            return
 
 
 class SerialPool(DebugPool):
-    """A pool that processes input serially.
+    '''A pool that processes input serially.
 
-    This makes attaching debuggers to worker processes easier.
-    """
+    This pool does not fork. This makes attaching debuggers to worker processes
+    easier.
+
+    The pool will spool input to workers in cyclical order, to simulate how
+    work might be distributed in the multi-process case.
+    '''
     process_class = SerialProcess
-    queue_manager_class = SerialQueueManager
+    worker_routine_class = SerialWorkerRoutine
 
     def spool_input(self, close_if_done=True):
-        # Throw some `None`s onto the queue to stop workers
-        def inputs():
-            for serialized_input in self.all_input_serialized:
-                yield serialized_input
-                yield None
+        self.qm.spool_input(self.all_input_serialized)
 
-        self.qm.spool_input(inputs())
-
-        # simulate parallelism by dispatching work to each of our workers.
         workers = itertools.cycle(self.processes)
 
         while not self.qm.input_queue.empty():
             worker_proc = workers.next()
             worker_proc._target(*worker_proc._args, **worker_proc._kwargs)
+
+        self.finish_workers()
 
 
 def mock_debug_pool():
