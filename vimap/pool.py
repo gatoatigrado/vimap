@@ -45,6 +45,7 @@ class VimapPool(object):
 
     process_class = multiprocessing.Process
     worker_routine_class = vimap.real_worker_routine.WorkerRoutine
+    queue_manager_class = vimap.queue_manager.VimapQueueManager
 
     # TODO: Implement timeout in joining workers
     #
@@ -53,7 +54,7 @@ class VimapPool(object):
         self.in_queue_size_factor = in_queue_size_factor
         self.worker_sequence = list(worker_sequence)
 
-        self.qm = vimap.queue_manager.VimapQueueManager(
+        self.qm = self.queue_manager_class(
             max_real_in_flight=self.in_queue_size_factor * len(self.worker_sequence),
             max_total_in_flight=max_total_in_flight,
             debug=debug)

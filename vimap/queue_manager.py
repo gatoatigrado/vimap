@@ -21,6 +21,7 @@ _MAX_IN_FLIGHT = 100
 
 class VimapQueueManager(object):
     '''Args: Sequence of vimap workers.'''
+    queue_class = multiprocessing.queues.Queue
 
     def __init__(self, max_real_in_flight, max_total_in_flight, debug=False):
         '''
@@ -32,8 +33,8 @@ class VimapQueueManager(object):
         '''
         self.max_real_in_flight = min(_MAX_IN_FLIGHT, max_real_in_flight)
         self.max_total_in_flight = max_total_in_flight
-        self.input_queue = multiprocessing.queues.Queue(max_real_in_flight)
-        self.output_queue = multiprocessing.queues.Queue(max_real_in_flight)
+        self.input_queue = self.queue_class(max_real_in_flight)
+        self.output_queue = self.queue_class(max_real_in_flight)
 
         # Temporary output queue (enqueue with `append`, dequeue with `pop(0)`).
         # Prevents threads from blocking

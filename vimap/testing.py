@@ -41,6 +41,29 @@ class DebugPool(vimap.pool.VimapPool):
         return input_
 
 
+class SerialQueue(object):
+    def __init__(self, *args, **kwargs):
+        self.queue = []
+
+    def get_nowait(self):
+        if not self.queue:
+            raise multiprocessing.queues.Empty()
+        else:
+            return self.queue.pop(0)
+
+    get = get_nowait
+
+    def put(self, item):
+        self.queue.append(item)
+
+    def empty(self):
+        return not self.queue
+
+
+class SerialQueueManager(vimap.queue_manager.VimapQueueManager):
+    queue_class = SerialQueue
+
+
 class SerialProcess(multiprocessing.Process):
     '''A process that doesn't actually fork.'''
 
@@ -78,6 +101,7 @@ class SerialPool(DebugPool):
     '''
     process_class = SerialProcess
     worker_routine_class = SerialWorkerRoutine
+    queue_manager_class = SerialQueueManager
 
     def spool_input(self, close_if_done=True):
         self.qm.spool_input(self.all_input_serialized)
