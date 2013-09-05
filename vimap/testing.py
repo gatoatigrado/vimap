@@ -42,6 +42,16 @@ class DebugPool(vimap.pool.VimapPool):
 
 
 class SerialQueue(object):
+    '''
+    This method mocks the multiprocessing.queues.Queue class, providing an
+    interface to get and put items.
+
+    Details: We can't reliably use the multiprocessing.queues.Queue class from
+    serial thread pools, because it uses helper threads to load and retrieve
+    data. If the main thread doesn't happen to have a sleep call (or IO-related
+    call) to make it yield [so these helper threads can actually run], the
+    process could hang indefinitely.
+    '''
     def __init__(self, *args, **kwargs):
         self.queue = []
 
