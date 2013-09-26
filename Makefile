@@ -11,4 +11,7 @@ run_coverage:
 coverage: run_coverage
 	coverage report -m --include='vimap/*' --omit=''
 
+clean:
+	rm -rf $$(find . -iname "*.pyc")
+
 _PHONY:
