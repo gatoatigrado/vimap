@@ -12,6 +12,10 @@ import traceback
 from collections import namedtuple
 
 
+# Lightweight terminal colorizing, don't depend on the [better] blessings package
+_red = (lambda s: '\x1b[31m{0}\x1b[0m'.format(s)) if sys.stderr.isatty() else (lambda s: s)
+
+
 _ExceptionContext = namedtuple('ExceptionContext', ('value', 'formatted_traceback'))
 class ExceptionContext(_ExceptionContext):
     '''Pickleable representation of an exception from a process.
@@ -30,22 +34,26 @@ class ExceptionContext(_ExceptionContext):
         return cls(value, formatted_traceback)
 
 
+def clean_print(msg, fd=None, end='\n'):
+    """Prints a message to stderr (or another fd), flushing it before and after.
+    """
+    fd = sys.stderr if fd is None else fd
+    msg = msg + end
+    fd.flush()
+    fd.write(msg)
+    fd.flush()
+
+
 def print_exception(ec, traceback_, worker_):
     '''Prints an exception when the user hasn't explicitly handled it. Use of
     sys.stderr.write is an attempt to avoid multiple threads munging log lines.
     '''
-    exception_str = '[Worker Exception] {typ}: {exception}\n'.format(
-        typ=ec.value.__class__.__name__, exception=ec.value)
-    sys.stderr.flush()
-    sys.stderr.write(exception_str)
-    sys.stderr.flush()
+    clean_print(_red("""[Worker Exception] {ec.value.__class__.__name__}: {ec.value}
+    {ec.formatted_traceback}""".format(ec=ec)))
 
 
 def print_warning(message, **kwargs):
     '''Prints a warning message
     '''
-    warning_str = '[Warning] {message}{fmt_cond}{args}\n'.format(
-        message=message, fmt_cond=(': ' if kwargs else ''), args=kwargs)
-    sys.stderr.flush()
-    sys.stderr.write(warning_str)
-    sys.stderr.flush()
+    clean_print('[Warning] {message}{fmt_cond}{args}\n'.format(
+        message=message, fmt_cond=(': ' if kwargs else ''), args=kwargs))
