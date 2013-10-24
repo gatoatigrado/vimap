@@ -103,6 +103,7 @@ class VimapPool(object):
             process.daemon = True # processes will be controlled by parent
             process.start()
             self.processes.append(process)
+        return self
 
     def __del__(self):
         '''Don't hang if all references to the pool are lost.'''
