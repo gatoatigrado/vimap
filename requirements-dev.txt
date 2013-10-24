@@ -1,0 +1,3 @@
+# Not required for vimap itself, only for running `make test` via tox
+tox==1.6.1
+coverage==3.5.3
