@@ -9,6 +9,7 @@ def instancemethod_runonce(depends=()):
     Stores its state on an instance's __runonce__ field.
     '''
     assert isinstance(depends, (list, tuple))
+
     def inner(fcn):
         @functools.wraps(fcn)
         def fcn_helper(self, *args, **kwargs):

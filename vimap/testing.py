@@ -19,9 +19,11 @@ unpickleable = (get_func(3), 3)
 
 def no_warnings():
     '''Make vimap.exception_handling.print_warning fail tests.'''
-    import testify as T # in case you're not using testify
+    import testify as T  # in case you're not using testify
 
-    return mock.patch.object(vimap.exception_handling, 'print_warning',
+    return mock.patch.object(
+        vimap.exception_handling,
+        'print_warning',
         lambda *args, **kwargs: T.assert_not_reached())
 
 
@@ -128,6 +130,6 @@ class SerialPool(DebugPool):
 def mock_debug_pool():
     return mock.patch.object(vimap.pool, 'VimapPool', DebugPool)
 
+
 def mock_serial_pool():
     return mock.patch.object(vimap.pool, 'VimapPool', SerialPool)
-

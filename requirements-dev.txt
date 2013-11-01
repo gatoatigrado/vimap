@@ -1,3 +1,5 @@
 # Not required for vimap itself, only for running `make test` via tox
 tox==1.6.1
 coverage==3.5.3
+flake8
+pylint>=1.0.0

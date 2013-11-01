@@ -112,8 +112,8 @@ class ExceptionsTest(T.TestCase):
     def test_unconsumed_exceptions(self, print_exc_mock):
         '''Unconsumed exceptions should only be printed.
         '''
-        processes = vimap.pool.fork(worker_raise_exc_immediately.init_args(init=i)
-            for i in [1, 1, 1])
+        processes = vimap.pool.fork(
+            worker_raise_exc_immediately.init_args(init=i) for i in [1, 1, 1])
         del processes
 
         calls = print_exc_mock.call_args_list
@@ -122,8 +122,9 @@ class ExceptionsTest(T.TestCase):
 
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_a_few_error(self, print_exc_mock):
-        processes = vimap.pool.fork((worker_raise_exc_with_curleys.init_args(init=i)
-            for i in xrange(2)), in_queue_size_factor=2)
+        processes = vimap.pool.fork(
+            (worker_raise_exc_with_curleys.init_args(init=i) for i in xrange(2)),
+            in_queue_size_factor=2)
         processes.imap([1]).block_ignore_output()
         del processes
 
@@ -134,8 +135,9 @@ class ExceptionsTest(T.TestCase):
     @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_fail_after_a_while(self, print_exc_mock, print_warning_mock):
-        processes = vimap.pool.fork((worker_raise_exc_with_curleys.init_args(init=i)
-            for i in xrange(100)), in_queue_size_factor=2)
+        processes = vimap.pool.fork(
+            (worker_raise_exc_with_curleys.init_args(init=i) for i in xrange(100)),
+            in_queue_size_factor=2)
         processes.imap([-1] * 3000 + list(range(50)))
 
         # Check yielded output.
@@ -181,7 +183,9 @@ class ExceptionContextTest(T.TestCase):
         expected_formatted_tb = ['Traceback:\n', 'stuff\n', 'more stuff\n']
         expected_ex = ValueError('test')
         expected_formatted_tb_str = """Traceback:\nstuff\nmore stuff\nValueError('test',)"""
-        expected_ec = ExceptionContext(value=expected_ex, formatted_traceback=expected_formatted_tb_str)
+        expected_ec = ExceptionContext(
+            value=expected_ex,
+            formatted_traceback=expected_formatted_tb_str)
         expected_tb = mock.Mock()
         mock_exc_info = (None, expected_ex, expected_tb)
 

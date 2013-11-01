@@ -71,15 +71,15 @@ class SerialPoolTest(T.TestCase):
 
 class NoWarningsTest(T.TestCase):
 
-	def test_no_warnings(self):
-		with mock.patch('sys.stderr') as stderr:
-			vimap.exception_handling.print_warning('')
-			stderr.write.assert_called()
-			stderr.flush.assert_called()
+    def test_no_warnings(self):
+        with mock.patch('sys.stderr') as stderr:
+            vimap.exception_handling.print_warning('')
+            stderr.write.assert_called()
+            stderr.flush.assert_called()
 
-		with T.assert_raises(AssertionError):
-			with vimap.testing.no_warnings():
-				vimap.exception_handling.print_warning('')
+        with T.assert_raises(AssertionError):
+            with vimap.testing.no_warnings():
+                vimap.exception_handling.print_warning('')
 
 if __name__ == '__main__':
     T.run()

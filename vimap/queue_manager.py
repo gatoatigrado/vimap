@@ -83,7 +83,7 @@ class VimapQueueManager(object):
         while (max_time_s is None) or (time.time() - start_time < max_time_s):
             try:
                 item = self.output_queue.get_nowait()
-                self.num_real_in_flight -= 1 # only decrement if no exceptions were thrown
+                self.num_real_in_flight -= 1  # only decrement if no exceptions were thrown
 
                 if self.debug:
                     print("Main thread: got item #{0}".format(item[0]))
@@ -114,7 +114,8 @@ class VimapQueueManager(object):
             True iff `input_iterator` is exhausted.
         '''
         self.feed_out_to_tmp()
-        n_to_put = min(self.max_real_in_flight - self.num_real_in_flight,
+        n_to_put = min(
+            self.max_real_in_flight - self.num_real_in_flight,
             self.max_total_in_flight - self.num_total_in_flight)
 
         if n_to_put > 0:

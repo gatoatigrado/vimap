@@ -13,6 +13,8 @@ from collections import namedtuple
 
 
 _ExceptionContext = namedtuple('ExceptionContext', ('value', 'formatted_traceback'))
+
+
 class ExceptionContext(_ExceptionContext):
     '''Pickleable representation of an exception from a process.
 

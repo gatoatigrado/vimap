@@ -5,7 +5,7 @@ except ImportError:
 
 setup(
     name="vimap",
-    version="0.1.1",
+    version="0.1.2-SNAPSHOT",
     provides=["vimap"],
     author="gatoatigrado",
     author_email="gatoatigrado@gmail.com",

@@ -49,8 +49,14 @@ class VimapPool(object):
 
     # TODO: Implement timeout in joining workers
     #
-    def __init__(self, worker_sequence, in_queue_size_factor=10, timeout=5.0,
-            max_total_in_flight=100000, debug=False):
+    def __init__(
+            self,
+            worker_sequence,
+            in_queue_size_factor=10,
+            timeout=5.0,
+            max_total_in_flight=100000,
+            debug=False):
+
         self.in_queue_size_factor = in_queue_size_factor
         self.worker_sequence = list(worker_sequence)
 
@@ -61,11 +67,13 @@ class VimapPool(object):
 
         # Don't prevent `self` from being GC'd
         self_ref = weakref.ref(self)
+
         def check_output_for_error(item):
             uid, typ, output = item
             if typ == 'exception':
                 vimap.exception_handling.print_exception(output, None, None)
-                if self_ref(): self_ref().has_exceptions = True
+                if self_ref():
+                    self_ref().has_exceptions = True
         self.qm.add_output_hook(check_output_for_error)
 
         self.processes = []
@@ -73,17 +81,23 @@ class VimapPool(object):
         self.timeout = timeout
 
         self.input_uid_ctr = 0
-        self.input_uid_to_input = {} # input to keep around until handled
+        self.input_uid_to_input = {}  # input to keep around until handled
         self.input_sequences = []
-        self.has_exceptions = False # Have any workers thrown exceptions yet?
+        self.has_exceptions = False  # Have any workers thrown exceptions yet?
         self.debug = debug
 
     num_in_flight = property(lambda self: self.qm.num_total_in_flight)
 
     _default_print_fcn = lambda msg: print(msg, file=sys.stderr)
-    def add_progress_notification(self, print_interval_s=1, item_type="items",
+
+    def add_progress_notification(
+            self,
+            print_interval_s=1,
+            item_type="items",
             print_fcn=_default_print_fcn):
+
         state = {'last_printed': time.time(), 'output_counter': 0}
+
         def print_output_progress(item):
             state['output_counter'] += 1
             if time.time() - state['last_printed'] > print_interval_s:
@@ -100,7 +114,7 @@ class VimapPool(object):
             process = self.process_class(
                 target=routine.run,
                 args=(self.qm.input_queue, self.qm.output_queue))
-            process.daemon = True # processes will be controlled by parent
+            process.daemon = True  # processes will be controlled by parent
             process.start()
             self.processes.append(process)
         return self
@@ -109,9 +123,10 @@ class VimapPool(object):
         '''Don't hang if all references to the pool are lost.'''
         self.block_ignore_output(close_if_done=True)
         if self.input_uid_to_input and not self.has_exceptions:
-            vimap.exception_handling.print_warning("Pool disposed before input "
-                "was consumed, but no worker exceptions were caught "
-                "(or only seen when the pool was deleted)")
+            vimap.exception_handling.print_warning(
+                "Pool disposed before input was consumed, but no worker "
+                "exceptions were caught (or only seen when the pool was "
+                "deleted)")
 
     def all_processes_died(self, exception_check_optimization=True):
         if exception_check_optimization and (not self.has_exceptions):
@@ -235,7 +250,8 @@ class VimapPool(object):
                     break
                 time.sleep(0.01)
             except IOError:
-                print("Error getting output queue item from main process",
+                print(
+                    "Error getting output queue item from main process",
                     file=sys.stderr)
                 raise
         if close_if_done:
@@ -252,7 +268,8 @@ class VimapPool(object):
     # ------
 
     def block_ignore_output(self, *args, **kwargs):
-        for _ in self.zip_in_out(*args, **kwargs): pass
+        for _ in self.zip_in_out(*args, **kwargs):
+            pass
 
 
 def fork(*args, **kwargs):

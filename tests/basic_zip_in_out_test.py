@@ -26,7 +26,8 @@ class BasicInoutTest(T.TestCase):
         test_passes = {}
         processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, 2, 3])
         processes.finish_workers = lambda: test_passes.setdefault('result', True)
-        del processes # will happen if it falls out of scope
+        del processes  # will happen if it falls out of scope
+
         # gc.collect() -- doesn't seem necessary
         T.assert_dicts_equal(test_passes, {'result': True})
 

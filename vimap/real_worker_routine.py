@@ -17,12 +17,13 @@ import vimap.exception_handling
 
 _IDLE_TIMEOUT = 0.02
 
+
 class WorkerRoutine(object):
     def __init__(self, fcn, init_args, init_kwargs, index, debug):
         self.fcn = fcn
         self.init_args = init_args
         self.init_kwargs = dict(init_kwargs)
-        self.init_kwargs_str = str(self.init_kwargs) # for debug printing
+        self.init_kwargs_str = str(self.init_kwargs)  # for debug printing
         self.index, self.debug_enabled = index, debug
 
     def debug(self, message, *fmt_args, **fmt_kwargs):
@@ -48,7 +49,8 @@ class WorkerRoutine(object):
                 # print("Waiting")
                 pass
             except IOError:
-                print("Worker error getting item from input queue",
+                print(
+                    "Worker error getting item from input queue",
                     file=sys.stderr)
                 raise
 
@@ -68,14 +70,17 @@ class WorkerRoutine(object):
             self.debug("...done")
 
             try:
-                self.debug("Joining output queue (size {size}, full: {full})",
+                self.debug(
+                    "Joining output queue (size {size}, full: {full})",
                     size=self.output_queue.qsize(),
                     full=self.output_queue.full())
-            except NotImplementedError: pass # Mac OS X doesn't implement qsize()
+            except NotImplementedError:
+                pass  # Mac OS X doesn't implement qsize()
             self.output_queue.join_thread()
             self.debug("...done")
         # threads might have already been closed
-        except AssertionError: pass
+        except AssertionError:
+            pass
 
     def run(self, input_queue, output_queue):
         '''
@@ -100,12 +105,12 @@ class WorkerRoutine(object):
                     "Produced output before getting first input, or multiple "
                     "outputs for one input. Output: {0}".format(output))
                 self.debug("Produced output for input #{0}", self.input_index)
-                self.output_queue.put( (self.input_index, 'output', output) )
-                self.input_index = None # prevent it from producing mult. outputs
+                self.output_queue.put((self.input_index, 'output', output))
+                self.input_index = None  # prevent it from producing mult. outputs
         except Exception:
             ec = vimap.exception_handling.ExceptionContext.current()
             self.debug('{0}', ec.formatted_traceback)
-            self.output_queue.put( (self.input_index, 'exception', ec) )
+            self.output_queue.put((self.input_index, 'exception', ec))
 
         self.explicitly_close_queues()
         self.debug("exiting")
