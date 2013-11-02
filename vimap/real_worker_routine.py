@@ -79,8 +79,8 @@ class WorkerRoutine(object):
             self.output_queue.join_thread()
             self.debug("...done")
         # threads might have already been closed
-        except AssertionError:
-            pass
+        except AssertionError as e:
+            self.debug("Couldn't join threads; error {0}", e)
 
     def run(self, input_queue, output_queue):
         '''

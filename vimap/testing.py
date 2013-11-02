@@ -57,6 +57,20 @@ class SerialQueue(object):
     def __init__(self, *args, **kwargs):
         self.queue = []
 
+    def close(self):
+        """Sets the queue to closed, and raises errors if any interface
+        functions are called.
+        """
+        del self.queue
+
+        def raise_error(*args, **kwargs):
+            raise ValueError("Queue is closed!")
+        self.get = self.get_nowait = self.put = self.empty = raise_error
+
+    def join_thread(self):
+        # according to the multiprocessing docs, at least
+        assert not hasattr(self, 'queue'), "you must call close() first."
+
     def get_nowait(self):
         if not self.queue:
             raise multiprocessing.queues.Empty()
@@ -116,6 +130,8 @@ class SerialPool(DebugPool):
     queue_manager_class = SerialQueueManager
 
     def spool_input(self, close_if_done=True):
+        """Instead of just spooling input, immediately do the work too.
+        """
         self.qm.spool_input(self.all_input_serialized)
 
         workers = itertools.cycle(self.processes)
@@ -123,8 +139,6 @@ class SerialPool(DebugPool):
         while not self.qm.input_queue.empty():
             worker_proc = workers.next()
             worker_proc._target(*worker_proc._args, **worker_proc._kwargs)
-
-        self.finish_workers()
 
 
 def mock_debug_pool():

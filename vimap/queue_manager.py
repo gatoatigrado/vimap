@@ -13,10 +13,23 @@ import multiprocessing
 import multiprocessing.queues
 import time
 
+import vimap.util
+
 
 # TODO: Find why this is necessary
 # (in practice, it seems some things stall otherwise)
 _MAX_IN_FLIGHT = 100
+
+
+# NOTE(gatoatigrado|2013-11-01) Queue feeder threads will send an,
+#
+#     IOError: [Errno 32] Broken pipe
+#
+# in the _send() method of multiprocessing if the queue is closed too soon.
+# We throw in some hacks to sleep for 10ms, which seems to effectively avoid
+# this flake. It's not fun. I'm going to write a multiprocessing.Queue
+# replacement/alternative hopefully-soon.
+_AVOID_SEND_FLAKINESS = True
 
 
 class VimapQueueManager(object):
@@ -46,6 +59,26 @@ class VimapQueueManager(object):
 
         self.output_hooks = []
         self.debug = debug
+
+    @vimap.util.instancemethod_runonce()
+    def close(self):
+        if _AVOID_SEND_FLAKINESS and (self.queue_class is multiprocessing.queues.Queue):
+            time.sleep(0.01)
+
+        if self.debug:
+            print("Main thread queue manager: Closing and joining input queue")
+        self.input_queue.close()
+        self.input_queue.join_thread()
+        del self.input_queue
+
+        assert self.output_queue.empty(), \
+            ("You should *not* close the output queue before it's all "
+            "consumed, else any workers putting items into the queuewill hang!")
+        if self.debug:
+            print("Main thread queue manager: Closing and joining output queue")
+        self.output_queue.close()
+        self.output_queue.join_thread()
+        del self.output_queue
 
     def add_output_hook(self, hook):
         '''Add a function which will be executed immediately when output is

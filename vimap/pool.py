@@ -121,7 +121,7 @@ class VimapPool(object):
 
     def __del__(self):
         '''Don't hang if all references to the pool are lost.'''
-        self.block_ignore_output(close_if_done=True)
+        self.finish_workers()
         if self.input_uid_to_input and not self.has_exceptions:
             vimap.exception_handling.print_warning(
                 "Pool disposed before input was consumed, but no worker "
@@ -154,6 +154,7 @@ class VimapPool(object):
             self.qm.feed_out_to_tmp(max_time_s=None)
             time.sleep(0.001)
         self.qm.feed_out_to_tmp(max_time_s=None)
+        self.qm.close()
 
     @vimap.util.instancemethod_runonce()
     def finish_workers(self):
