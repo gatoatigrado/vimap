@@ -1,9 +1,10 @@
 '''
 Provides methods for tests.
 '''
-from collections import namedtuple
+import functools
 import itertools
 import multiprocessing
+from collections import namedtuple
 
 import mock
 
@@ -43,6 +44,15 @@ class DebugPool(vimap.pool.VimapPool):
         return input_
 
 
+def _requires_queue(fcn):
+    @functools.wraps(fcn)
+    def inner(self, *args, **kwargs):
+        if not hasattr(self, 'queue'):
+            raise ValueError("Queue is closed!")
+        return fcn(self, *args, **kwargs)
+    return inner
+
+
 class SerialQueue(object):
     '''
     This method mocks the multiprocessing.queues.Queue class, providing an
@@ -63,14 +73,11 @@ class SerialQueue(object):
         """
         del self.queue
 
-        def raise_error(*args, **kwargs):
-            raise ValueError("Queue is closed!")
-        self.get = self.get_nowait = self.put = self.empty = raise_error
-
     def join_thread(self):
         # according to the multiprocessing docs, at least
         assert not hasattr(self, 'queue'), "you must call close() first."
 
+    @_requires_queue
     def get_nowait(self):
         if not self.queue:
             raise multiprocessing.queues.Empty()
@@ -79,9 +86,13 @@ class SerialQueue(object):
 
     get = get_nowait
 
-    def put(self, item):
+    @_requires_queue
+    def put_nowait(self, item):
         self.queue.append(item)
 
+    put = put_nowait
+
+    @_requires_queue
     def empty(self):
         return not self.queue
 

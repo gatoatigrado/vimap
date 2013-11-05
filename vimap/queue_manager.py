@@ -62,23 +62,30 @@ class VimapQueueManager(object):
 
     @vimap.util.instancemethod_runonce()
     def close(self):
+        """
+        Closes any queues from the main method side. For input and output
+        queues, we will close the queue, join the queue thread, and delete
+        the corresponding attribute so any future attempted accesses will
+        fail.
+        """
         if _AVOID_SEND_FLAKINESS and (self.queue_class is multiprocessing.queues.Queue):
+            # multiprocessing's queue probably has a bug in its shutdown routine
             time.sleep(0.01)
 
-        if self.debug:
-            print("Main thread queue manager: Closing and joining input queue")
-        self.input_queue.close()
-        self.input_queue.join_thread()
-        del self.input_queue
+        def _close_queue(name, queue):
+            if self.debug:
+                print("Main thread queue manager: Closing and joining {0} queue".format(name))
+            queue.close()
+            queue.join_thread()
 
-        assert self.output_queue.empty(), \
-            ("You should *not* close the output queue before it's all "
+        _close_queue('input', self.input_queue)
+        del self.input_queue  # Make future accesses fail
+
+        assert self.output_queue.empty(), (
+            "You should *not* close the output queue before it's all "
             "consumed, else any workers putting items into the queuewill hang!")
-        if self.debug:
-            print("Main thread queue manager: Closing and joining output queue")
-        self.output_queue.close()
-        self.output_queue.join_thread()
-        del self.output_queue
+        _close_queue('output', self.output_queue)
+        del self.output_queue  # Make future accesses fail
 
     def add_output_hook(self, hook):
         '''Add a function which will be executed immediately when output is
