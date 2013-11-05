@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 '''
 Provides an interface for defining worker processes.
 '''

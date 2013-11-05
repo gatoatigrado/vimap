@@ -13,10 +13,23 @@ import multiprocessing
 import multiprocessing.queues
 import time
 
+import vimap.util
+
 
 # TODO: Find why this is necessary
 # (in practice, it seems some things stall otherwise)
 _MAX_IN_FLIGHT = 100
+
+
+# NOTE(gatoatigrado|2013-11-01) Queue feeder threads will send an,
+#
+#     IOError: [Errno 32] Broken pipe
+#
+# in the _send() method of multiprocessing if the queue is closed too soon.
+# We throw in some hacks to sleep for 10ms, which seems to effectively avoid
+# this flake. It's not fun. I'm going to write a multiprocessing.Queue
+# replacement/alternative hopefully-soon.
+_AVOID_SEND_FLAKINESS = True
 
 
 class VimapQueueManager(object):
@@ -46,6 +59,33 @@ class VimapQueueManager(object):
 
         self.output_hooks = []
         self.debug = debug
+
+    @vimap.util.instancemethod_runonce()
+    def close(self):
+        """
+        Closes any queues from the main method side. For input and output
+        queues, we will close the queue, join the queue thread, and delete
+        the corresponding attribute so any future attempted accesses will
+        fail.
+        """
+        if _AVOID_SEND_FLAKINESS and (self.queue_class is multiprocessing.queues.Queue):
+            # multiprocessing's queue probably has a bug in its shutdown routine
+            time.sleep(0.01)
+
+        def _close_queue(name, queue):
+            if self.debug:
+                print("Main thread queue manager: Closing and joining {0} queue".format(name))
+            queue.close()
+            queue.join_thread()
+
+        _close_queue('input', self.input_queue)
+        del self.input_queue  # Make future accesses fail
+
+        assert self.output_queue.empty(), (
+            "You should *not* close the output queue before it's all "
+            "consumed, else any workers putting items into the queuewill hang!")
+        _close_queue('output', self.output_queue)
+        del self.output_queue  # Make future accesses fail
 
     def add_output_hook(self, hook):
         '''Add a function which will be executed immediately when output is

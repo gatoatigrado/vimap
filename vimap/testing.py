@@ -1,9 +1,10 @@
 '''
 Provides methods for tests.
 '''
-from collections import namedtuple
+import functools
 import itertools
 import multiprocessing
+from collections import namedtuple
 
 import mock
 
@@ -43,6 +44,15 @@ class DebugPool(vimap.pool.VimapPool):
         return input_
 
 
+def _requires_queue(fcn):
+    @functools.wraps(fcn)
+    def inner(self, *args, **kwargs):
+        if not hasattr(self, 'queue'):
+            raise ValueError("Queue is closed!")
+        return fcn(self, *args, **kwargs)
+    return inner
+
+
 class SerialQueue(object):
     '''
     This method mocks the multiprocessing.queues.Queue class, providing an
@@ -57,6 +67,17 @@ class SerialQueue(object):
     def __init__(self, *args, **kwargs):
         self.queue = []
 
+    def close(self):
+        """Sets the queue to closed, and raises errors if any interface
+        functions are called.
+        """
+        del self.queue
+
+    def join_thread(self):
+        # according to the multiprocessing docs, at least
+        assert not hasattr(self, 'queue'), "you must call close() first."
+
+    @_requires_queue
     def get_nowait(self):
         if not self.queue:
             raise multiprocessing.queues.Empty()
@@ -65,9 +86,13 @@ class SerialQueue(object):
 
     get = get_nowait
 
-    def put(self, item):
+    @_requires_queue
+    def put_nowait(self, item):
         self.queue.append(item)
 
+    put = put_nowait
+
+    @_requires_queue
     def empty(self):
         return not self.queue
 
@@ -116,6 +141,8 @@ class SerialPool(DebugPool):
     queue_manager_class = SerialQueueManager
 
     def spool_input(self, close_if_done=True):
+        """Instead of just spooling input, immediately do the work too.
+        """
         self.qm.spool_input(self.all_input_serialized)
 
         workers = itertools.cycle(self.processes)
@@ -123,8 +150,6 @@ class SerialPool(DebugPool):
         while not self.qm.input_queue.empty():
             worker_proc = workers.next()
             worker_proc._target(*worker_proc._args, **worker_proc._kwargs)
-
-        self.finish_workers()
 
 
 def mock_debug_pool():
