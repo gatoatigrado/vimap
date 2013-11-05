@@ -2,4 +2,5 @@
 tox==1.6.1
 coverage==3.5.3
 flake8
+testify
 pylint>=1.0.0
