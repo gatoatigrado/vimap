@@ -89,7 +89,7 @@ def basic_worker(xs):
 
 
 class TestBasicMapDoesntLeaveAroundFDs(T.TestCase):
-    def iteration_with_zip_auto_close(self):
+    def test_all_fds_cleaned_up(self):
         initial_open_fds = get_open_fds()
         pool = vimap.pool.fork_identical(basic_worker, num_workers=1)
         after_fork_open_fds = get_open_fds()
@@ -103,20 +103,11 @@ class TestBasicMapDoesntLeaveAroundFDs(T.TestCase):
         # All opened files should be FIFOs
         T.assert_equal(all(typ == ['fifo'] for typ in after_fork['opened'].values()), True)
 
-        # FIXME: Some FDs, which don't show up in strace, seem to stick around.
-        # I'm not sure why :(.
         after_cleanup = difference_open_fds(after_fork_open_fds, after_finish_open_fds)
         T.assert_gte(len(after_cleanup['closed']), 2)
 
-    def test_with_zip_auto_close(self):
-        initial_open_fds = get_open_fds()
-        for _ in xrange(10):
-            self.iteration_with_zip_auto_close()
-        final_open_fds = get_open_fds()
-
-        fds_left_around = difference_open_fds(initial_open_fds, final_open_fds)
-        # FIXME: See fixme above. Ideally this would be zero.
-        T.assert_lte(len(fds_left_around['opened']), 1)
+        left_around = difference_open_fds(initial_open_fds, after_finish_open_fds)
+        T.assert_equal(len(left_around['opened']), 0)
 
 
 if __name__ == "__main__":

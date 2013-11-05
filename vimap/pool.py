@@ -154,6 +154,13 @@ class VimapPool(object):
             self.qm.feed_out_to_tmp(max_time_s=None)
             time.sleep(0.001)
         self.qm.feed_out_to_tmp(max_time_s=None)
+
+        for process in self.processes:
+            process.join()
+        # NOTE: Not only prevents future erroneous accesses, 'del' is actually
+        # necessary to clean up / close the pipes used by the process.
+        del self.processes
+
         self.qm.close()
 
     @vimap.util.instancemethod_runonce()
