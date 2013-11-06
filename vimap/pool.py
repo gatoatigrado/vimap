@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 '''
 Provides process pools for vimap.
 
