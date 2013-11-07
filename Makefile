@@ -1,15 +1,10 @@
-TESTIFY_OPTIONS=-x disabled --summary
-
 tests: _PHONY
-	testify $(TESTIFY_OPTIONS) tests
+	tox
 
 test: _PHONY tests
 
-run_coverage:
-	coverage run `which testify` $(TESTIFY_OPTIONS) tests
-
-coverage: run_coverage
-	coverage report -m --include='vimap/*' --omit=''
+coverage: _PHONY
+	tox -e coverage
 
 clean:
 	rm -rf $$(find . -iname "*.pyc")

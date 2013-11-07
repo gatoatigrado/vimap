@@ -70,6 +70,7 @@ class SerialPoolTest(T.TestCase):
 
 
 class NoWarningsTest(T.TestCase):
+
     def test_no_warnings(self):
         with mock.patch('sys.stderr') as stderr:
             vimap.exception_handling.print_warning('')

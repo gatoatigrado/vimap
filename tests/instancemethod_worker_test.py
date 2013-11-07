@@ -27,5 +27,6 @@ class InstancemethodWorkerTest(T.TestCase):
         T.assert_equal(set(result), set([(2300, 2307), (2100, 2107), (2200, 2207)]))
 
     def test_unpickleable(self):
-        T.assert_raises(TypeError,
+        T.assert_raises(
+            TypeError,
             lambda: cPickle.dumps(unpickleable))

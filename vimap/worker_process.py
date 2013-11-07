@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 '''
 Provides an interface for defining worker processes.
 '''
@@ -21,6 +22,7 @@ class Imap2WorkerWrapper(object):
 
 
 worker = Imap2WorkerWrapper
+
 
 def instancemethod_worker(fcn):
     return property(lambda self: worker(functools.partial(fcn, self)))

@@ -24,7 +24,7 @@ def factorial(n):
 def factorial_worker(numbers):
     for number in numbers:
         factorial(number)
-        yield None # in case the numbers are large, ignore communication cost
+        yield None  # in case the numbers are large, ignore communication cost
 
 
 class PerformanceTest(T.TestCase):
@@ -35,11 +35,13 @@ class PerformanceTest(T.TestCase):
         T.assert_gt(num_workers, 1, "Too few cores to run performance test.")
 
         inputs = tuple(xrange(7000, 7100))
+
         def factor_sequential():
             for i in inputs:
                 factorial(i)
 
         pool = vimap.pool.fork_identical(factorial_worker, num_workers=num_workers)
+
         def factor_parallel():
             pool.imap(inputs).block_ignore_output(close_if_done=False)
 

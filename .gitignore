@@ -15,3 +15,4 @@ Session.vim
 tmp/
 vimap.egg-info/
 .coverage
+.tox

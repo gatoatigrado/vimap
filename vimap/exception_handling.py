@@ -17,6 +17,8 @@ _red = (lambda s: '\x1b[31m{0}\x1b[0m'.format(s)) if sys.stderr.isatty() else (l
 
 
 _ExceptionContext = namedtuple('ExceptionContext', ('value', 'formatted_traceback'))
+
+
 class ExceptionContext(_ExceptionContext):
     '''Pickleable representation of an exception from a process.
 
