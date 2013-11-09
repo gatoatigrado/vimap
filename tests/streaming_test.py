@@ -23,16 +23,19 @@ class StreamingTest(T.TestCase):
 
     def test_streaming(self):
         """Cleverish test to check that vimap is really streaming. Essentially
-        we make the input generator unable to stop until some of its outputs
-        have been processed through the pipeline.
+        we make the input generator that emits,
+
+            [0, 1, 2, 3, ..., 99]  # variable inputs_which_must_be_processed
+
+        and then emits [None, None, ...] until each of the numerical inputs
+        have been processed (fed through the worker, and retrieved as output).
         """
-        num_before_exiting = 100
+        inputs_which_must_be_processed = frozenset(xrange(100))
         already_processed = set()
         num_elements_total = 0
 
         def input_generator():
-            inputs_which_must_be_processed = frozenset(xrange(num_before_exiting))
-            for i in inputs_which_must_be_processed:
+            for i in sorted(inputs_which_must_be_processed):
                 yield i
             while not already_processed.issuperset(inputs_which_must_be_processed):
                 yield None
@@ -42,7 +45,7 @@ class StreamingTest(T.TestCase):
             already_processed.add(in_)
             num_elements_total += 1
 
-        streaming_lookahead = num_elements_total - num_before_exiting
+        streaming_lookahead = num_elements_total - len(inputs_which_must_be_processed)
         T.assert_lte(
             0,
             streaming_lookahead,
@@ -74,6 +77,11 @@ class StrictInflightStreamingTest(StreamingTest):
     """
     def fork_pool(self):
         pool = vimap.pool.fork([do_nothing_worker.init_args()], max_total_in_flight=2)
-        # make sure the last test in test_streaming does something
+
+        # This assert checks that the max_total_in_flight argument is properly
+        # propagated to the queue manager, and makes it directly obvious that
+        # the last assert in test_streaming does something
+        # (the assert "streaming_lookahead <= pool.qm.max_total_in_flight")
         assert pool.qm.max_total_in_flight == 2
+
         return pool
