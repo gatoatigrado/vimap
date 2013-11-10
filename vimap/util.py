@@ -1,6 +1,17 @@
 import functools
 
 
+def chunk(iterator, chunk_size=100):
+    buf = []
+    for element in iterator:
+        buf.append(element)
+        if len(buf) >= chunk_size:
+            yield tuple(buf)
+            buf = []
+    if buf:
+        yield tuple(buf)
+
+
 def instancemethod_runonce(depends=()):
     '''
     Decorator for instance methods that should only run once. This

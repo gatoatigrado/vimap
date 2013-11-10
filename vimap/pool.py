@@ -34,6 +34,7 @@ import weakref
 import vimap.exception_handling
 import vimap.queue_manager
 import vimap.real_worker_routine
+import vimap.chunked_real_worker_routine
 import vimap.util
 
 
@@ -280,10 +281,44 @@ class VimapPool(object):
             pass
 
 
+class ChunkedPool(VimapPool):
+    worker_routine_class = vimap.chunked_real_worker_routine.ChunkedWorkerRoutine
+
+    def imap_chunks(self, *args, **kwargs):
+        """We rename the base pool's `imap` to `imap_chunks`, so it's obvious
+        the caller is putting in chunks, which will be un-chunked in the worker
+        routine.
+        """
+        return super(ChunkedPool, self).imap(*args, **kwargs)
+
+    def imap(self, input_sequence, chunk_size=100):
+        return self.imap_chunks(vimap.util.chunk(input_sequence, chunk_size))
+
+    def zip_in_out_typ_chunks(self, *args, **kwargs):
+        """Same idea as `imap_chunks`."""
+        return super(ChunkedPool, self).zip_in_out_typ(*args, **kwargs)
+
+    def zip_in_out_chunks(self, *args, **kwargs):
+        for inp, output, typ in self.zip_in_out_typ_chunks(*args, **kwargs):
+            if typ == 'output':
+                yield inp, output
+
+    def zip_in_out_typ(self, *args, **kwargs):
+        for inp, output, typ in self.zip_in_out_typ_chunks(*args, **kwargs):
+            if typ == 'output':
+                assert len(inp) == len(output)
+                for in_elt, out_elt in zip(inp, output):
+                    yield in_elt, out_elt, typ
+            else:
+                yield inp, output, typ
+
+
 def fork(*args, **kwargs):
-    pool = VimapPool(*args, **kwargs)
-    pool.fork()
-    return pool
+    return VimapPool(*args, **kwargs).fork()
+
+
+def fork_chunked(*args, **kwargs):
+    return ChunkedPool(*args, **kwargs).fork()
 
 
 def fork_identical(worker_fcn, *args, **kwargs):
