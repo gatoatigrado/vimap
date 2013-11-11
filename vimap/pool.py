@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 '''
 Provides process pools for vimap.
 
@@ -39,6 +40,9 @@ import vimap.util
 
 
 NO_INPUT = 'NO_INPUT'
+
+
+_DEFAULT_DEFAULT_CHUNK_SIZE = 100
 
 
 class VimapPool(object):
@@ -284,6 +288,17 @@ class VimapPool(object):
 class ChunkedPool(VimapPool):
     worker_routine_class = vimap.chunked_real_worker_routine.ChunkedWorkerRoutine
 
+    def __init__(self, *args, **kwargs):
+        self.default_chunk_size = kwargs.pop(
+            'default_chunk_size',
+            _DEFAULT_DEFAULT_CHUNK_SIZE)
+        super(ChunkedPool, self).__init__(*args, **kwargs)
+        self.check_chunk_size(self.default_chunk_size)
+
+    def check_chunk_size(self, chunk_size):
+        if not (isinstance(chunk_size, int) and chunk_size > 0):
+            raise ValueError("Invalid chunk size {0}!".format(chunk_size))
+
     def imap_chunks(self, *args, **kwargs):
         """We rename the base pool's `imap` to `imap_chunks`, so it's obvious
         the caller is putting in chunks, which will be un-chunked in the worker
@@ -291,7 +306,9 @@ class ChunkedPool(VimapPool):
         """
         return super(ChunkedPool, self).imap(*args, **kwargs)
 
-    def imap(self, input_sequence, chunk_size=100):
+    def imap(self, input_sequence, chunk_size=None):
+        chunk_size = (self.default_chunk_size if chunk_size is None else chunk_size)
+        self.check_chunk_size(chunk_size)
         return self.imap_chunks(vimap.util.chunk(input_sequence, chunk_size))
 
     def zip_in_out_typ_chunks(self, *args, **kwargs):
@@ -310,6 +327,11 @@ class ChunkedPool(VimapPool):
                 for in_elt, out_elt in zip(inp, output):
                     yield in_elt, out_elt, typ
             else:
+                # To have a consistent API, we untuple the input and say the exception
+                # happened on the first element (which may not be true); if the
+                # input is malformed in any way (or the NO_INPUT token), we
+                # pass it through unprocessed.
+                inp = (inp[0] if (isinstance(inp, (list, tuple)) and inp) else inp)
                 yield inp, output, typ
 
 
@@ -327,3 +349,10 @@ def fork_identical(worker_fcn, *args, **kwargs):
     '''
     num_workers = kwargs.pop('num_workers', multiprocessing.cpu_count())
     return fork(worker_fcn.init_args(*args, **kwargs) for _ in range(num_workers))
+
+
+def fork_identical_chunked(worker_fcn, *args, **kwargs):
+    # NOTE: This API is semi-broken (kwargs should flow to fork), but copying
+    # fork_identical for now, to be consistent.
+    num_workers = kwargs.pop('num_workers', multiprocessing.cpu_count())
+    return fork_chunked(worker_fcn.init_args(*args, **kwargs) for _ in range(num_workers))

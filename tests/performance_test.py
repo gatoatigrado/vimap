@@ -28,6 +28,14 @@ def factorial_worker(numbers):
 
 
 class PerformanceTest(T.TestCase):
+    def get_speedup_factor(self, baseline_fcn, optimized_fcn, num_tests):
+        baseline_performance = timeit.timeit(baseline_fcn, number=num_tests)
+        optimized_performance = timeit.timeit(optimized_fcn, number=num_tests)
+        _message = "Performance test too fast, susceptible to overhead"
+        T.assert_gt(baseline_performance, 0.005, _message)
+        T.assert_gt(optimized_performance, 0.005, _message)
+        return (baseline_performance / optimized_performance)
+
     def test_performance(self):
         # NOTE: Avoid hyperthreading, which doesn't help performance
         # in our test case.
@@ -45,11 +53,23 @@ class PerformanceTest(T.TestCase):
         def factor_parallel():
             pool.imap(inputs).block_ignore_output(close_if_done=False)
 
-        sequential_performance = timeit.timeit(factor_sequential, number=4)
-        parallel_performance = timeit.timeit(factor_parallel, number=4)
-        speedup_ratio = sequential_performance / parallel_performance
-        linear_speedup_ratio = float(num_workers)
-        efficiency = speedup_ratio / linear_speedup_ratio
+        speedup_ratio = self.get_speedup_factor(factor_sequential, factor_parallel, 4)
+        efficiency = speedup_ratio / num_workers
         print("Easy performance test efficiency: {0:.1f}% ({1:.1f}x speedup)".format(
             efficiency * 100., speedup_ratio))
         T.assert_gt(efficiency, 0.70, "Failed performance test!!")
+
+    def test_chunking_really_is_faster(self):
+        inputs = tuple(xrange(10, 100)) * 10
+        normal_pool = vimap.pool.fork_identical(factorial_worker, num_workers=2)
+        chunked_pool = vimap.pool.fork_identical_chunked(factorial_worker, num_workers=2)
+
+        def factor_normal():
+            normal_pool.imap(inputs).block_ignore_output(close_if_done=False)
+
+        def factor_chunked():
+            chunked_pool.imap(inputs).block_ignore_output(close_if_done=False)
+
+        speedup_ratio = self.get_speedup_factor(factor_normal, factor_chunked, 2)
+        print("Chunked performance test: {0:.1f}x speedup".format(speedup_ratio))
+        T.assert_gt(speedup_ratio, 10)
