@@ -1,0 +1,10 @@
+vimap changelog
+=================
+
+0.1.2 (2013-11-11)
+--------------------
+
+- Explicitly close queues from main thread
+- Tracked down leaked FDs when shutting down pools
+- Add Travis CI and make style conform to flake8
+- Fixed setup.py to include the 'vimap.ext' package
