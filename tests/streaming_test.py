@@ -45,10 +45,14 @@ class StreamingTest(T.TestCase):
             already_processed.add(in_)
             num_elements_total += 1
 
+        # NOTE: streaming_lookahead is the number of None elements emitted by
+        # input_generator(). It can be greater than zero, when the worker
+        # hasn't finished processing the first 100 numerical inputs, but our
+        # main thread wants to enqueue more inputs (to keep the workers busy).
         streaming_lookahead = num_elements_total - len(inputs_which_must_be_processed)
-        T.assert_lte(
-            0,
+        T.assert_gte(
             streaming_lookahead,
+            0,
             "Sanity check failed.")
 
         # Note: This can *very* occasionally flake, since we can feed a bunch
