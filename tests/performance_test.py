@@ -1,9 +1,13 @@
+# -*- coding: utf-8 -*-
 '''
 Tests peformance in a system-agnostic manner, by comparing single-threaded
 performance with parallel performance.
 '''
+from __future__ import absolute_import
+from __future__ import print_function
 
 import multiprocessing
+import time
 import timeit
 
 import testify as T
@@ -25,6 +29,13 @@ def factorial_worker(numbers):
     for number in numbers:
         factorial(number)
         yield None  # in case the numbers are large, ignore communication cost
+
+
+@vimap.worker_process.worker
+def simple_sleep_worker(sleep_times):
+    for time_to_sleep in sleep_times:
+        time.sleep(time_to_sleep)
+        yield None
 
 
 class PerformanceTest(T.TestCase):
@@ -53,3 +64,36 @@ class PerformanceTest(T.TestCase):
         print("Easy performance test efficiency: {0:.1f}% ({1:.1f}x speedup)".format(
             efficiency * 100., speedup_ratio))
         T.assert_gt(efficiency, 0.70, "Failed performance test!!")
+
+    def run_big_fork_test(self, time_sleep_s, num_workers, num_inputs, num_test_iterations):
+        """Common setup for the big fork test; see usage in the two tests below.
+
+        :returns: The amount of time the test took, in seconds.
+        """
+        pool = vimap.pool.fork_identical(simple_sleep_worker, num_workers=num_workers)
+
+        def sleep_in_parallel():
+            pool.imap(time_sleep_s for _ in xrange(num_inputs))
+            pool.block_ignore_output(close_if_done=False)
+
+        return timeit.timeit(sleep_in_parallel, number=num_test_iterations) / num_test_iterations
+
+    def test_big_fork(self):
+        """Tests that we can fork a large number of processes, each of which
+        will wait for a few milliseconds, and return.
+
+        NOTE: currently fails if you bump 70 up to 200. We're going to fix this very soon.
+        """
+        time_sleep_s = 0.2
+        test_time = self.run_big_fork_test(time_sleep_s, 70, 70, 3)
+        print("Big fork performance test: {0:.2f} s (nominal: {1:.2f} s)".format(
+            test_time, time_sleep_s))
+        T.assert_lt(test_time, time_sleep_s * 2)
+
+    def test_big_fork_test(self):
+        """Tests that if we have one more input, the big fork performance test
+        would fail. This makes sure the above test is really doing something.
+        """
+        time_sleep_s = 0.2
+        test_time = self.run_big_fork_test(time_sleep_s, 70, 71, 1)
+        T.assert_gt(test_time, time_sleep_s * 2)
