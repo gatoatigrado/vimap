@@ -1,11 +1,10 @@
-try:
-    from setuptools import setup
-except ImportError:
-    from distutils.core import setup
+from setuptools import find_packages
+from setuptools import setup
+
 
 setup(
     name="vimap",
-    version="0.1.2-SNAPSHOT",
+    version="0.1.2",
     provides=["vimap"],
     author="gatoatigrado",
     author_email="gatoatigrado@gmail.com",
@@ -20,10 +19,11 @@ setup(
         "Development Status :: 3 - Alpha",
     ],
     install_requires=['testify'],
-    packages=["vimap"],
+    packages=find_packages(exclude=['tests*']),
     long_description="""vimap -- variations on imap, not in C
 
-The vimap package is designed to provide a more flexible alternative for multiprocessing.imap_unordered.
-It aspires to support HTTP-like clients processing data, though contains nothing client-specific.
+The vimap package is designed to provide a more flexible alternative for
+multiprocessing.imap_unordered.  It aspires to support HTTP-like clients
+processing data, though contains nothing client-specific.
 """
 )
