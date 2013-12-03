@@ -299,28 +299,20 @@ class ChunkedPool(VimapPool):
         if not (isinstance(chunk_size, int) and chunk_size > 0):
             raise ValueError("Invalid chunk size {0}!".format(chunk_size))
 
-    def imap_chunks(self, *args, **kwargs):
-        """We rename the base pool's `imap` to `imap_chunks`, so it's obvious
-        the caller is putting in chunks, which will be un-chunked in the worker
-        routine.
-        """
-        return super(ChunkedPool, self).imap(*args, **kwargs)
-
+    # Standard vimap API
     def imap(self, input_sequence, chunk_size=None):
+        """By default, using the regular vimap API (in this case, imap) will
+        automatically chunk input.
+        """
         chunk_size = (self.default_chunk_size if chunk_size is None else chunk_size)
         self.check_chunk_size(chunk_size)
         return self.imap_chunks(vimap.util.chunk(input_sequence, chunk_size))
 
-    def zip_in_out_typ_chunks(self, *args, **kwargs):
-        """Same idea as `imap_chunks`."""
-        return super(ChunkedPool, self).zip_in_out_typ(*args, **kwargs)
-
-    def zip_in_out_chunks(self, *args, **kwargs):
-        for inp, output, typ in self.zip_in_out_typ_chunks(*args, **kwargs):
-            if typ == 'output':
-                yield inp, output
-
     def zip_in_out_typ(self, *args, **kwargs):
+        """By default, the regular vimap API will un-chunk output. So, as we
+        get back output from the base API, we yield an input-output pair
+        for everything in the chunk.
+        """
         for inp, output, typ in self.zip_in_out_typ_chunks(*args, **kwargs):
             if typ == 'output':
                 assert len(inp) == len(output)
@@ -334,6 +326,30 @@ class ChunkedPool(VimapPool):
                 inp = (inp[0] if (isinstance(inp, (list, tuple)) and inp) else inp)
                 yield inp, output, typ
 
+    # Chunked API -- provides a lower-level API to directly enqueue or consume
+    # chunks.
+    def imap_chunks(self, *args, **kwargs):
+        """We rename the base pool's `imap` to `imap_chunks`, so it's obvious
+        the caller is putting in chunks, which will be un-chunked in the worker
+        routine.
+        """
+        return super(ChunkedPool, self).imap(*args, **kwargs)
+
+    def zip_in_out_typ_chunks(self, *args, **kwargs):
+        """Same idea as `imap_chunks`; this exposes the base pool's
+        zip_in_out_typ() function, which returns chunks of input associated
+        to chunks of output.
+        """
+        return super(ChunkedPool, self).zip_in_out_typ(*args, **kwargs)
+
+    def zip_in_out_chunks(self, *args, **kwargs):
+        """To provide chunked APIs for all methods, we also add a zip_in_out_chunks()
+        which is like zip_in_out_typ_chunks but filters on typ == 'output'.
+        """
+        for inp, output, typ in self.zip_in_out_typ_chunks(*args, **kwargs):
+            if typ == 'output':
+                yield inp, output
+
 
 def fork(*args, **kwargs):
     return VimapPool(*args, **kwargs).fork()
@@ -343,16 +359,17 @@ def fork_chunked(*args, **kwargs):
     return ChunkedPool(*args, **kwargs).fork()
 
 
-def fork_identical(worker_fcn, *args, **kwargs):
+def _fork_identical_base(fork_method, worker_fcn, *args, **kwargs):
     '''Shortcut for when you don't care about per-worker initialization
     arguments.
     '''
     num_workers = kwargs.pop('num_workers', multiprocessing.cpu_count())
-    return fork(worker_fcn.init_args(*args, **kwargs) for _ in range(num_workers))
+    return fork_method(worker_fcn.init_args(*args, **kwargs) for _ in range(num_workers))
 
 
-def fork_identical_chunked(worker_fcn, *args, **kwargs):
-    # NOTE: This API is semi-broken (kwargs should flow to fork), but copying
-    # fork_identical for now, to be consistent.
-    num_workers = kwargs.pop('num_workers', multiprocessing.cpu_count())
-    return fork_chunked(worker_fcn.init_args(*args, **kwargs) for _ in range(num_workers))
+def fork_identical(*args, **kwargs):
+    return _fork_identical_base(fork, *args, **kwargs)
+
+
+def fork_identical_chunked(*args, **kwargs):
+    return _fork_identical_base(fork_chunked, *args, **kwargs)

@@ -6,10 +6,13 @@ performance with parallel performance.
 from __future__ import absolute_import
 from __future__ import print_function
 
+import functools
+import logging
 import multiprocessing
 import time
 import timeit
 
+import mock
 import testify as T
 
 import vimap.pool
@@ -38,6 +41,21 @@ def simple_sleep_worker(sleep_times):
         yield None
 
 
+def _retry_test(test_fcn):
+    """To avoid flakiness inherent in performance tests, we allow the test
+    function to fail once, so long as it succeeds a second time.
+    """
+    @functools.wraps(test_fcn)
+    def inner(*args, **kwargs):
+        try:
+            return test_fcn(*args, **kwargs)
+        except Exception as e:
+            logging.warning("Warning: performance test {0} failed with exception {0}: {1}, retrying"
+                .format(test_fcn.__name__, type(e), e))
+            return test_fcn(*args, **kwargs)
+    return inner
+
+
 class PerformanceTest(T.TestCase):
     def get_speedup_factor(self, baseline_fcn, optimized_fcn, num_tests):
         baseline_performance = timeit.timeit(baseline_fcn, number=num_tests)
@@ -47,6 +65,16 @@ class PerformanceTest(T.TestCase):
         T.assert_gt(optimized_performance, 0.005, _message)
         return (baseline_performance / optimized_performance)
 
+    def test_retry_raises_on_second_failure(self):
+        """Dumb paranoia test to check our _retry_test decorator."""
+        @_retry_test
+        def always_fails():
+            raise ValueError()
+        with T.assert_raises(ValueError):
+            with mock.patch.object(logging, 'warning'):  # suppress console spam
+                always_fails()
+
+    @_retry_test
     def test_performance(self):
         # NOTE: Avoid hyperthreading, which doesn't help performance
         # in our test case.
@@ -70,7 +98,11 @@ class PerformanceTest(T.TestCase):
             efficiency * 100., speedup_ratio))
         T.assert_gt(efficiency, 0.70, "Failed performance test!!")
 
+    @_retry_test
     def test_chunking_really_is_faster(self):
+        """Chunking should be faster when the tasks are really small (so queue
+        communication overhead is the biggest factor).
+        """
         inputs = tuple(xrange(10, 100)) * 10
         normal_pool = vimap.pool.fork_identical(factorial_worker, num_workers=2)
         chunked_pool = vimap.pool.fork_identical_chunked(factorial_worker, num_workers=2)

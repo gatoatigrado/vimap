@@ -15,16 +15,20 @@ basic_worker = vimap.worker_process.worker(lambda inputs: inputs)
 
 
 class ChunkedAPITest(T.TestCase):
+    def get_chunked_pool(self, default_chunk_size):
+        return vimap.pool.fork_chunked([basic_worker.init_args()], default_chunk_size=default_chunk_size)
+
+    def test_invalid_chunk_size(self):
+        with T.assert_raises(ValueError):
+            self.get_chunked_pool(None)
+
     def test_valid_chunk_size(self):
-        with T.assert_raises(ValueError):
-            vimap.pool.fork_chunked([basic_worker.init_args()], default_chunk_size=None)
+        self.get_chunked_pool(10)
 
-        pool = vimap.pool.fork_chunked([basic_worker.init_args()], default_chunk_size=10)
-
-        # Can't be a float
+    def test_floats_are_invalid_chunk_sizes(self):
         with T.assert_raises(ValueError):
-            pool.imap([1, 2, 3], chunk_size=1.0)
+            self.get_chunked_pool(10).imap([1, 2, 3], chunk_size=1.0)
 
-        # Can't be zero
+    def test_zero_is_an_invalid_chunk_size(self):
         with T.assert_raises(ValueError):
-            pool.imap([1, 2, 3], chunk_size=0)
+            self.get_chunked_pool(10).imap([1, 2, 3], chunk_size=0)
