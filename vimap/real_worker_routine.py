@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 '''
 The real worker routine used by vimap.pool. This provides a runnable which
 consumes from an input queue, and enqueues results to an output queue.
@@ -82,6 +83,18 @@ class WorkerRoutine(object):
         except AssertionError as e:
             self.debug("Couldn't join threads; error {0}", e)
 
+    def handle_output(self, output):
+        """Makes the imperative calls to put an output item on the output
+        queue, and does some sanity checks to make sure the function is
+        yielding only one output for every input.
+        """
+        assert self.input_index is not None, (
+            "Produced output before getting first input, or multiple "
+            "outputs for one input. Output: {0}".format(output))
+        self.debug("Produced output for input #{0}", self.input_index)
+        self.output_queue.put((self.input_index, 'output', output))
+        self.input_index = None  # prevent it from producing mult. outputs
+
     def run(self, input_queue, output_queue):
         '''
         Takes ordered items from input_queue, lets `fcn` iterate over
@@ -101,12 +114,7 @@ class WorkerRoutine(object):
                     fcn_return_value=fcn_iter)
                 assert False
             for output in fcn_iter:
-                assert self.input_index is not None, (
-                    "Produced output before getting first input, or multiple "
-                    "outputs for one input. Output: {0}".format(output))
-                self.debug("Produced output for input #{0}", self.input_index)
-                self.output_queue.put((self.input_index, 'output', output))
-                self.input_index = None  # prevent it from producing mult. outputs
+                self.handle_output(output)
         except Exception:
             ec = vimap.exception_handling.ExceptionContext.current()
             self.debug('{0}', ec.formatted_traceback)
