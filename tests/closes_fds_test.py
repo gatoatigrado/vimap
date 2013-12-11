@@ -6,9 +6,11 @@ from __future__ import absolute_import
 from __future__ import print_function
 
 import errno
+import logging
 import mock
 import os
 import os.path
+import resource
 import stat
 import testify as T
 import vimap.pool
@@ -60,7 +62,16 @@ def list_fds_linux():
 
 def list_fds_other():
     """A method to list open FDs that doesn't need /proc/{pid}."""
-    for i in xrange(3, 30):
+    max_fds_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if max_fds_soft == resource.RLIM_INFINITY or not (3 < max_fds_soft < 4096):
+        logging.warning(
+            "max_fds_soft invalid ({0}), assuming 4096 is a sufficient upper bound"
+            .format(max_fds_soft))
+        max_fds_soft = 4096
+
+    # The first three FDs are stdin, stdout, and stderr. We're interested in
+    # everything after.
+    for i in xrange(3, max_fds_soft):
         try:
             info = os.fstat(i)
             yield i
