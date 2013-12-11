@@ -5,8 +5,10 @@ Provides an interface for defining worker processes.
 from __future__ import absolute_import
 from __future__ import print_function
 
+import errno
 import mock
 import os
+import os.path
 import stat
 import testify as T
 import vimap.pool
@@ -27,16 +29,44 @@ readable_mode_strings = {
 
 
 FDInfo = namedtuple("FDInfo", ["modes", "symlink"])
+current_proc_fd_dir = lambda *subpaths: os.path.join("/proc", str(os.getpid()), "fd", *subpaths)
 
 
 def fd_type_if_open(fd_number):
-    """For a given open file descriptor, return a list of human-readable
-    strings describing the file type.
+    """For a given open file descriptor, return information about that file descriptor.
+
+    'modes' are a list of human-readable strings describing the file type;
+    'symlink' is the target of the file descriptor (often a pipe name)
     """
     fd_stat = os.fstat(fd_number)
-    return FDInfo(
-        modes=[k for k, v in readable_mode_strings.items() if v(fd_stat.st_mode)],
-        symlink=os.readlink("/proc/{0}/fd/{1}".format(os.getpid(), fd_number)))
+    modes = [k for k, v in readable_mode_strings.items() if v(fd_stat.st_mode)]
+    if os.path.isdir(current_proc_fd_dir()):
+        return FDInfo(
+            modes=modes,
+            symlink=os.readlink(current_proc_fd_dir(str(fd_number))))
+    else:
+        return FDInfo(modes=modes, symlink=None)
+
+
+def list_fds_linux():
+    """A method to list open FDs that uses /proc/{pid}/fd."""
+    fds = [
+        (int(i), current_proc_fd_dir(str(i)))
+        for i in os.listdir(current_proc_fd_dir())]
+    # NOTE: Sometimes, an FD is used to list the above directory. Hence, we should
+    # re-check whether the FD still exists (via os.path.exists)
+    return [i for (i, path) in fds if (i >= 3 and os.path.exists(path))]
+
+
+def list_fds_other():
+    """A method to list open FDs that doesn't need /proc/{pid}."""
+    for i in xrange(3, 30):
+        try:
+            info = os.fstat(i)
+            yield i
+        except OSError as e:
+            if e.errno != errno.EBADF:
+                raise
 
 
 def get_open_fds(retries=3):
@@ -45,13 +75,12 @@ def get_open_fds(retries=3):
 
         fd (int) --> FDInfo
     """
-    unix_fd_dir = "/proc/{0}/fd".format(os.getpid())
-    fds = [(int(i), os.path.join(unix_fd_dir, i)) for i in os.listdir(unix_fd_dir)]
+    if os.path.isdir(current_proc_fd_dir()):
+        fds = list_fds_linux()
+    else:
+        fds = list_fds_other()
 
     try:
-        # NOTE: Sometimes, an FD is used to list the above directory. Hence, we should
-        # re-check whether the FD still exists (via os.path.exists)
-        fds = [i for (i, path) in fds if (i >= 3 and os.path.exists(path))]
         return dict(filter(
             lambda (k, v): v is not None,
             ((i, fd_type_if_open(i)) for i in fds)))
@@ -138,7 +167,9 @@ class TestBasicMapDoesntLeaveAroundFDs(T.TestCase):
         # T.assert_equal(after_fork['closed'], [])
         T.assert_gte(len(after_fork['opened']), 2)  # should have at least 3 open fds
         # All opened files should be FIFOs
-        T.assert_equal(all(info.modes == ['fifo'] for info in after_fork['opened'].values()), True)
+        if not all(info.modes == ['fifo'] for info in after_fork['opened'].values()):
+            print("Infos: {0}".format(after_fork['opened']))
+            T.assert_not_reached("Some infos are not FIFOs")
 
         after_cleanup = difference_open_fds(after_fork_open_fds, after_finish_open_fds)
         T.assert_gte(len(after_cleanup['closed']), 2)
