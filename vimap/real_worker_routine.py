@@ -55,6 +55,27 @@ class WorkerRoutine(object):
                     file=sys.stderr)
                 raise
 
+    def safe_close_queue(self, name, queue):
+        self.debug("Closing queue {0}", name)
+        queue.close()
+        try:
+            self.debug("Joining thread for queue {0}", name)
+
+            try:
+                self.debug(
+                    "Joining queue {name} (size {size}, full: {full})",
+                    name=name,
+                    size=queue.qsize(),
+                    full=queue.full())
+            except NotImplementedError:
+                pass  # Mac OS X doesn't implement qsize()
+            queue.join_thread()
+        # threads might have already been closed
+        except AssertionError as e:
+            self.debug("Couldn't join queue {0}; error {1}", name, e)
+        else:
+            self.debug("Done closing {0}, no exceptions.", name)
+
     def explicitly_close_queues(self):
         '''Explicitly join queues, so that we'll get "stuck" in something that's
         more easily debugged than multiprocessing.
@@ -63,25 +84,8 @@ class WorkerRoutine(object):
         but this seems to leave us in a bad state in practice (reproducible
         via existing tests).
         '''
-        self.input_queue.close()
-        self.output_queue.close()
-        try:
-            self.debug("Joining input queue")
-            self.input_queue.join_thread()
-            self.debug("...done")
-
-            try:
-                self.debug(
-                    "Joining output queue (size {size}, full: {full})",
-                    size=self.output_queue.qsize(),
-                    full=self.output_queue.full())
-            except NotImplementedError:
-                pass  # Mac OS X doesn't implement qsize()
-            self.output_queue.join_thread()
-            self.debug("...done")
-        # threads might have already been closed
-        except AssertionError as e:
-            self.debug("Couldn't join threads; error {0}", e)
+        self.safe_close_queue('input', self.input_queue)
+        self.safe_close_queue('output', self.output_queue)
 
     def handle_output(self, output):
         """Makes the imperative calls to put an output item on the output
