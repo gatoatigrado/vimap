@@ -1,6 +1,11 @@
 vimap changelog
 =================
 
+0.1.4 (2013-12-11)
+--------------------
+
+- Better fix to clean up left-over FDs (cf. Github issue 14 and pull request 15)
+
 0.1.3 (2013-12-03)
 --------------------
 
