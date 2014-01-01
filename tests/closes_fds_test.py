@@ -5,11 +5,18 @@ Provides an interface for defining worker processes.
 from __future__ import absolute_import
 from __future__ import print_function
 
+import errno
+import logging
+import mock
 import os
+import os.path
+import resource
 import stat
-import vimap.pool
-import vimap.worker_process
 import testify as T
+import vimap.pool
+import vimap.queue_manager
+import vimap.worker_process
+from collections import namedtuple
 
 
 # decrypt POSIX stuff
@@ -23,30 +30,75 @@ readable_mode_strings = {
     'socket': stat.S_ISSOCK}
 
 
+FDInfo = namedtuple("FDInfo", ["modes", "symlink"])
+current_proc_fd_dir = lambda *subpaths: os.path.join("/proc", str(os.getpid()), "fd", *subpaths)
+
+
 def fd_type_if_open(fd_number):
-    """For a given open file descriptor, return a list of human-readable
-    strings describing the file type.
+    """For a given open file descriptor, return information about that file descriptor.
+
+    'modes' are a list of human-readable strings describing the file type;
+    'symlink' is the target of the file descriptor (often a pipe name)
     """
     fd_stat = os.fstat(fd_number)
-    return [
-        k for k, v in readable_mode_strings.items()
-        if v(fd_stat.st_mode)]
+    modes = [k for k, v in readable_mode_strings.items() if v(fd_stat.st_mode)]
+    if os.path.isdir(current_proc_fd_dir()):
+        return FDInfo(
+            modes=modes,
+            symlink=os.readlink(current_proc_fd_dir(str(fd_number))))
+    else:
+        return FDInfo(modes=modes, symlink=None)
 
 
-def get_open_fds():
+def list_fds_linux():
+    """A method to list open FDs that uses /proc/{pid}/fd."""
+    fds = [
+        (int(i), current_proc_fd_dir(str(i)))
+        for i in os.listdir(current_proc_fd_dir())]
+    # NOTE: Sometimes, an FD is used to list the above directory. Hence, we should
+    # re-check whether the FD still exists (via os.path.exists)
+    return [i for (i, path) in fds if (i >= 3 and os.path.exists(path))]
+
+
+def list_fds_other():
+    """A method to list open FDs that doesn't need /proc/{pid}."""
+    max_fds_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if max_fds_soft == resource.RLIM_INFINITY or not (3 < max_fds_soft < 4096):
+        logging.warning(
+            "max_fds_soft invalid ({0}), assuming 4096 is a sufficient upper bound"
+            .format(max_fds_soft))
+        max_fds_soft = 4096
+
+    # The first three FDs are stdin, stdout, and stderr. We're interested in
+    # everything after.
+    for i in xrange(3, max_fds_soft):
+        try:
+            info = os.fstat(i)
+            yield i
+        except OSError as e:
+            if e.errno != errno.EBADF:
+                raise
+
+
+def get_open_fds(retries=3):
     """
     Returns a map,
 
-        fd (int) --> modes (list of human-readable strings)
+        fd (int) --> FDInfo
     """
-    unix_fd_dir = "/proc/{0}/fd".format(os.getpid())
-    fds = [(int(i), os.path.join(unix_fd_dir, i)) for i in os.listdir(unix_fd_dir)]
-    # NOTE: Sometimes, an FD is used to list the above directory. Hence, we should
-    # re-check whether the FD still exists (via os.path.exists)
-    fds = [i for (i, path) in fds if (i >= 3 and os.path.exists(path))]
-    return dict(filter(
-        lambda (k, v): v is not None,
-        ((i, fd_type_if_open(i)) for i in fds)))
+    if os.path.isdir(current_proc_fd_dir()):
+        fds = list_fds_linux()
+    else:
+        fds = list_fds_other()
+
+    try:
+        return dict(filter(
+            lambda (k, v): v is not None,
+            ((i, fd_type_if_open(i)) for i in fds)))
+    except OSError:
+        if retries == 0:
+            raise
+        return get_open_fds(retries - 1)
 
 
 def difference_open_fds(before, after):
@@ -58,7 +110,8 @@ def difference_open_fds(before, after):
     # "a - b" for dicts -- remove anything in 'a' that has a key in b
     dict_diff = lambda a, b: dict((k, a[k]) for k in (frozenset(a) - frozenset(b)))
     for k in (frozenset(after) & frozenset(before)):
-        assert before[k] == after[k], "Changing FD types aren't supported!"
+        if before[k] != after[k]:
+            print("WARNING: FD {0} changed from {1} to {2}".format(k, before[k], after[k]))
     return {
         'closed': dict_diff(before, after),
         'opened': dict_diff(after, before)}
@@ -88,7 +141,31 @@ def basic_worker(xs):
         yield x + 1
 
 
+def repeat(times):
+    """Repeats a test to help catch flakiness."""
+    def fcn_helper(fcn):
+        return lambda *args, **kwargs: [fcn(*args, **kwargs) for _ in xrange(times)]
+    return fcn_helper
+
+
 class TestBasicMapDoesntLeaveAroundFDs(T.TestCase):
+    @T.setup_teardown
+    def instrument_queue_initiation(self):
+        old_init = vimap.queue_manager.VimapQueueManager.__init__
+        def instrumented_init(*args, **kwargs):
+            self.before_queue_manager_init = get_open_fds()
+            old_init(*args, **kwargs)
+            self.after_queue_manager_init = get_open_fds()
+            self.queue_fds = difference_open_fds(
+                self.before_queue_manager_init,
+                self.after_queue_manager_init)['opened']
+        with mock.patch.object(
+                vimap.queue_manager.VimapQueueManager,
+                '__init__',
+                instrumented_init):
+            yield
+
+    @repeat(30)
     def test_all_fds_cleaned_up(self):
         initial_open_fds = get_open_fds()
         pool = vimap.pool.fork_identical(basic_worker, num_workers=1)
@@ -101,12 +178,18 @@ class TestBasicMapDoesntLeaveAroundFDs(T.TestCase):
         # T.assert_equal(after_fork['closed'], [])
         T.assert_gte(len(after_fork['opened']), 2)  # should have at least 3 open fds
         # All opened files should be FIFOs
-        T.assert_equal(all(typ == ['fifo'] for typ in after_fork['opened'].values()), True)
+        if not all(info.modes == ['fifo'] for info in after_fork['opened'].values()):
+            print("Infos: {0}".format(after_fork['opened']))
+            T.assert_not_reached("Some infos are not FIFOs")
 
         after_cleanup = difference_open_fds(after_fork_open_fds, after_finish_open_fds)
         T.assert_gte(len(after_cleanup['closed']), 2)
 
         left_around = difference_open_fds(initial_open_fds, after_finish_open_fds)
+        if len(left_around['opened']) != 0:
+            queue_fds_left_around = dict(
+                item for item in self.queue_fds.items() if item[0] in left_around['opened'])
+            print("Queue FDs left around: {0}".format(queue_fds_left_around))
         T.assert_equal(len(left_around['opened']), 0)
 
 

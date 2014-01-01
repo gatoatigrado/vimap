@@ -21,17 +21,6 @@ import vimap.util
 _MAX_IN_FLIGHT = 100
 
 
-# NOTE(gatoatigrado|2013-11-01) Queue feeder threads will send an,
-#
-#     IOError: [Errno 32] Broken pipe
-#
-# in the _send() method of multiprocessing if the queue is closed too soon.
-# We throw in some hacks to sleep for 10ms, which seems to effectively avoid
-# this flake. It's not fun. I'm going to write a multiprocessing.Queue
-# replacement/alternative hopefully-soon.
-_AVOID_SEND_FLAKINESS = True
-
-
 class VimapQueueManager(object):
     '''Args: Sequence of vimap workers.'''
     queue_class = multiprocessing.queues.Queue
@@ -68,15 +57,32 @@ class VimapQueueManager(object):
         the corresponding attribute so any future attempted accesses will
         fail.
         """
-        if _AVOID_SEND_FLAKINESS and (self.queue_class is multiprocessing.queues.Queue):
-            # multiprocessing's queue probably has a bug in its shutdown routine
-            time.sleep(0.01)
+        finalize_methods = []
+
+        def _wait_close(queue_name, pipe_name, pipe):
+            """Works around bugs (or misuse?) in multiprocessing.queue by waiting for
+            a queue's internal pipes to actually be closed.
+
+            See https://github.com/gatoatigrado/vimap/issues/14 for more information.
+            """
+            if not pipe.closed:
+                if self.debug:
+                    print("Force-closing {0} pipe for queue {1}".format(pipe_name, queue_name))
+                pipe.close()
 
         def _close_queue(name, queue):
             if self.debug:
                 print("Main thread queue manager: Closing and joining {0} queue".format(name))
             queue.close()
             queue.join_thread()
+
+            # NOTE: If we're using a different queue (e.g. our mock SerialQueue),
+            # or using a different implementation of Python, don't do this fragile
+            # mock.
+            if hasattr(queue, '_reader') and hasattr(queue, '_writer'):
+                reader_pipe, writer_pipe = queue._reader, queue._writer
+                finalize_methods.append(lambda: _wait_close(name, 'reader', reader_pipe))
+                finalize_methods.append(lambda: _wait_close(name, 'writer', writer_pipe))
 
         _close_queue('input', self.input_queue)
         del self.input_queue  # Make future accesses fail
@@ -86,6 +92,9 @@ class VimapQueueManager(object):
             "consumed, else any workers putting items into the queuewill hang!")
         _close_queue('output', self.output_queue)
         del self.output_queue  # Make future accesses fail
+
+        for finalize_method in finalize_methods:
+            finalize_method()
 
     def add_output_hook(self, hook):
         '''Add a function which will be executed immediately when output is

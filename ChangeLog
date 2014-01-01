@@ -1,0 +1,21 @@
+vimap changelog
+=================
+
+0.1.4 (2013-12-11)
+--------------------
+
+- Better fix to clean up left-over FDs (cf. Github issue 14 and pull request 15)
+
+0.1.3 (2013-12-03)
+--------------------
+
+- Automatic chunking, which only requires calling 'fork_chunked' in the place of 'fork'
+- Added tests to ensure vimap is streaming, and big forks work
+
+0.1.2 (2013-11-11)
+--------------------
+
+- Explicitly close queues from main thread
+- Tracked down leaked FDs when shutting down pools
+- Add Travis CI and make style conform to flake8
+- Fixed setup.py to include the 'vimap.ext' package
