@@ -84,6 +84,7 @@ class ExceptionsTest(T.TestCase):
             [serialize_error(get_ec_value(call)) for call in print_exc_mock.call_args_list],
             [serialize_error(expected_exception)] * count)
 
+    @vimap.testing.queue_feed_ignore_ioerrors_mock
     @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_exception_before_iteration(self, print_exc_mock, print_warning_mock):
@@ -128,6 +129,7 @@ class ExceptionsTest(T.TestCase):
         ]
         T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
 
+    @vimap.testing.queue_feed_ignore_ioerrors_mock
     @mock.patch.object(vimap.exception_handling, 'clean_print', autospec=True)
     def test_exception_formatting(self, clean_print_mock):
         '''Test the formatting of exceptions (they should include the error
@@ -140,6 +142,7 @@ class ExceptionsTest(T.TestCase):
             args[0],
             "\x1b[31m[Worker Exception] ValueError: {0} curley braces!\x1b[0m\n  File ")
 
+    @vimap.testing.queue_feed_ignore_ioerrors_mock
     @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_exception_with_curleys(self, print_exc_mock, print_warning_mock):
