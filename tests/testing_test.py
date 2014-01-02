@@ -2,8 +2,8 @@ import mock
 import testify as T
 
 import vimap.pool
-import vimap.worker_process
 import vimap.testing
+import vimap.worker_process
 
 
 @vimap.worker_process.worker

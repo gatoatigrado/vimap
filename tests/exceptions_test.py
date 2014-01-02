@@ -128,6 +128,18 @@ class ExceptionsTest(T.TestCase):
         ]
         T.assert_sorted_equal(res_to_compare, expected_res_to_compare)
 
+    @mock.patch.object(vimap.exception_handling, 'clean_print', autospec=True)
+    def test_exception_formatting(self, clean_print_mock):
+        '''Test the formatting of exceptions (they should include the error
+        in red, and the start of a traceback).
+        '''
+        self.run_test_pool(worker_raise_exc_with_curleys)
+        first_exception = clean_print_mock.call_args_list[0]
+        args, kwargs = first_exception
+        T.assert_starts_with(
+            args[0],
+            "\x1b[31m[Worker Exception] ValueError: {0} curley braces!\x1b[0m\n  File ")
+
     @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_exception_with_curleys(self, print_exc_mock, print_warning_mock):
