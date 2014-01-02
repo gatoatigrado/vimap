@@ -4,6 +4,8 @@ Provides methods for tests.
 import functools
 import itertools
 import multiprocessing
+import multiprocessing.queues
+import traceback
 from collections import namedtuple
 
 import mock
@@ -31,6 +33,39 @@ def no_warnings():
         vimap.exception_handling,
         'print_warning',
         lambda *args, **kwargs: T.assert_not_reached())
+
+
+# for queue_feed_routine_ignoring_ioerrors
+_original_queue_feed = multiprocessing.queues.Queue._feed
+
+
+@mock.patch.object(traceback, 'print_exc', lambda: None)
+def queue_feed_routine_ignoring_ioerrors(*args, **kwargs):
+    """Mock routine, which you can patch in, in the stead of
+    multiprocessing.queues.Queue._feed. For convenience, just
+    use the queue_feed_ignore_ioerrors_mock decorator.
+
+    On certain tests, where workers die in unexpected places,
+    IOErrors will be printed for queue feeding. It doesn't seem
+    we are handling these edge cases incorrectly, so for now we
+    silence the exceptions (as to not be distracted by them and
+    possibly overlook other ones). The exceptions look like,
+
+    Traceback (most recent call last):
+      File "/usr/lib64/python2.7/multiprocessing/queues.py", line 266, in _feed
+        send(obj)
+    IOError: [Errno 32] Broken pipe
+
+    They are only raised by the queue threads, so won't be caught
+    by our testing framework anyway.
+    """
+    return _original_queue_feed(*args, **kwargs)
+
+
+queue_feed_ignore_ioerrors_mock = mock.patch.object(
+    multiprocessing.queues.Queue,
+    "_feed",
+    staticmethod(queue_feed_routine_ignoring_ioerrors))
 
 
 class DebugPool(vimap.pool.VimapPool):
