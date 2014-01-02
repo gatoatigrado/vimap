@@ -41,7 +41,6 @@ def clean_print(msg, fd=None, end='\n'):
     """
     fd = sys.stderr if fd is None else fd
     msg = msg + end
-    fd.flush()
     fd.write(msg)
     fd.flush()
 
@@ -50,8 +49,10 @@ def print_exception(ec, traceback_, worker_):
     '''Prints an exception when the user hasn't explicitly handled it. Use of
     sys.stderr.write is an attempt to avoid multiple threads munging log lines.
     '''
-    clean_print(_red("""[Worker Exception] {ec.value.__class__.__name__}: {ec.value}
-    {ec.formatted_traceback}""".format(ec=ec)))
+    clean_print(
+        _red("[Worker Exception] {ec.value.__class__.__name__}: {ec.value}".format(ec=ec))
+        + "\n"
+        + ec.formatted_traceback)
 
 
 def print_warning(message, **kwargs):
