@@ -24,7 +24,6 @@ class WorkerRoutine(object):
         self.fcn = fcn
         self.init_args = init_args
         self.init_kwargs = dict(init_kwargs)
-        self.init_kwargs_str = str(self.init_kwargs)  # for debug printing
         self.index, self.debug_enabled = index, debug
 
     def debug(self, message, *fmt_args, **fmt_kwargs):
@@ -107,7 +106,7 @@ class WorkerRoutine(object):
         '''
         self.input_queue, self.output_queue = input_queue, output_queue
         self.input_index = None
-        self.debug("starting; PID {0}, init kwargs {1}", os.getpid(), self.init_kwargs_str)
+        self.debug("starting; PID {0}", os.getpid())
         try:
             fcn_iter = self.fcn(self.worker_input_generator(), *self.init_args, **self.init_kwargs)
             try:
