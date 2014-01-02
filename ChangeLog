@@ -1,6 +1,14 @@
 vimap changelog
 =================
 
+0.1.5 (2014-01-02)
+--------------------
+
+- Prints full exception tracebacks when workers fail
+- Removed stringification of worker kwargs (this caused issues when passing
+  large objects to workers, and was only done for debug purposes)
+- Unit tests produce less console spam
+
 0.1.4 (2013-12-11)
 --------------------
 

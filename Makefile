@@ -9,5 +9,6 @@ coverage: _PHONY
 clean:
 	rm -rf $$(find . -iname "*.pyc")
 	rm -rf .tox
+	rm -rf vimap.egg-info
 
 _PHONY:
