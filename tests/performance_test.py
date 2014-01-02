@@ -50,7 +50,8 @@ def _retry_test(test_fcn):
         try:
             return test_fcn(*args, **kwargs)
         except Exception as e:
-            logging.warning("Warning: performance test {0} failed with exception {0}: {1}, retrying"
+            logging.warning(
+                "Warning: performance test {0} failed with exception {0}: {1}, retrying"
                 .format(test_fcn.__name__, type(e), e))
             return test_fcn(*args, **kwargs)
     return inner

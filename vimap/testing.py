@@ -16,8 +16,13 @@ import vimap.real_worker_routine
 
 DebugResult = namedtuple('DebugResult', ['uid', 'input', 'output'])
 
+
+class UnpickleableAndUnprintable(tuple):
+    __str__ = __repr__ = NotImplemented
+
+
 get_func = lambda x: lambda y: x + y
-unpickleable = (get_func(3), 3)
+unpickleable = UnpickleableAndUnprintable((get_func(3), 3))
 
 
 def no_warnings():
