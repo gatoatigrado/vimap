@@ -136,9 +136,9 @@ class ExceptionsTest(T.TestCase):
         self.run_test_pool(worker_raise_exc_with_curleys)
         first_exception = clean_print_mock.call_args_list[0]
         args, kwargs = first_exception
-        T.assert_starts_with(
-            args[0],
-            "\x1b[31m[Worker Exception] ValueError: {0} curley braces!\x1b[0m\n  File ")
+        expected_message = vimap.exception_handling._red(
+            "[Worker Exception] ValueError: {0} curley braces!") + "\n  File "
+        T.assert_starts_with(args[0], expected_message)
 
     @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
