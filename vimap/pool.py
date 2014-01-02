@@ -37,6 +37,7 @@ import vimap.queue_manager
 import vimap.real_worker_routine
 import vimap.chunked_real_worker_routine
 import vimap.util
+from vimap.visibility import shared_state
 
 
 NO_INPUT = 'NO_INPUT'
@@ -113,9 +114,15 @@ class VimapPool(object):
 
     def fork(self, debug=None):
         debug = self.debug if debug is None else debug
+        self.shared_state = shared_state.PoolSharedState(len(self.worker_sequence))
         for i, worker in enumerate(self.worker_sequence):
             routine = self.worker_routine_class(
-                worker.fcn, worker.args, worker.kwargs, index=i, debug=debug)
+                worker.fcn,
+                worker.args,
+                worker.kwargs,
+                index=i,
+                debug=debug,
+                state_setter=self.shared_state.state_setter(i))
             process = self.process_class(
                 target=routine.run,
                 args=(self.qm.input_queue, self.qm.output_queue))
@@ -233,6 +240,10 @@ class VimapPool(object):
         '''
         return self.input_uid_to_input.pop(uid, NO_INPUT)
 
+    def format_state(self):
+        worker_state = "Worker state: {0}".format(self.shared_state.get_state_string())
+        return worker_state
+
     # === Results-consuming functions
     def zip_in_out_typ(self, close_if_done=True):
         '''Yield (input, output, type) tuples for each input item processed.
@@ -246,8 +257,7 @@ class VimapPool(object):
                 uid, typ, output = self.qm.pop_output()
 
                 # Spool more so we don't exit prematurely
-                if self.qm.num_total_in_flight < len(self.processes):
-                    self.spool_input(close_if_done=close_if_done)
+                self.spool_input(close_if_done=close_if_done)
 
                 inp = self.get_corresponding_input(uid, output)
                 yield inp, output, typ

@@ -20,11 +20,12 @@ _IDLE_TIMEOUT = 0.02
 
 
 class WorkerRoutine(object):
-    def __init__(self, fcn, init_args, init_kwargs, index, debug):
+    def __init__(self, fcn, init_args, init_kwargs, index, debug, state_setter):
         self.fcn = fcn
         self.init_args = init_args
         self.init_kwargs = dict(init_kwargs)
         self.init_kwargs_str = str(self.init_kwargs)  # for debug printing
+        self.state_setter = state_setter  # for visibility
         self.index, self.debug_enabled = index, debug
 
     def debug(self, message, *fmt_args, **fmt_kwargs):
@@ -36,6 +37,7 @@ class WorkerRoutine(object):
         '''Call this on the worker processes: yields input.'''
         while True:
             try:
+                self.state_setter('i')
                 x = self.input_queue.get(timeout=_IDLE_TIMEOUT)
                 if x is None:
                     return
@@ -45,6 +47,7 @@ class WorkerRoutine(object):
                         input_index=self.input_index)
                 self.input_index, z = x
                 self.debug("Got input #{0}", self.input_index)
+                self.state_setter('R')
                 yield z
             except multiprocessing.queues.Empty:
                 # print("Waiting")
@@ -96,6 +99,7 @@ class WorkerRoutine(object):
             "Produced output before getting first input, or multiple "
             "outputs for one input. Output: {0}".format(output))
         self.debug("Produced output for input #{0}", self.input_index)
+        self.state_setter('o')
         self.output_queue.put((self.input_index, 'output', output))
         self.input_index = None  # prevent it from producing mult. outputs
 
@@ -120,9 +124,11 @@ class WorkerRoutine(object):
             for output in fcn_iter:
                 self.handle_output(output)
         except Exception:
+            self.state_setter('X')
             ec = vimap.exception_handling.ExceptionContext.current()
             self.debug('{0}', ec.formatted_traceback)
             self.output_queue.put((self.input_index, 'exception', ec))
 
         self.explicitly_close_queues()
+        self.state_setter('f')
         self.debug("exiting")
