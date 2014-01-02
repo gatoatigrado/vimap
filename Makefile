@@ -8,5 +8,6 @@ coverage: _PHONY
 
 clean:
 	rm -rf $$(find . -iname "*.pyc")
+	rm -rf .tox
 
 _PHONY:
