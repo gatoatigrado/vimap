@@ -3,8 +3,6 @@
 Tests that when workers throw exceptions, they're caught and/or printed in
 sensible places.
 """
-import math
-
 import testify as T
 
 import vimap.pool
@@ -16,7 +14,9 @@ basic_worker = vimap.worker_process.worker(lambda inputs: inputs)
 
 class ChunkedAPITest(T.TestCase):
     def get_chunked_pool(self, default_chunk_size):
-        return vimap.pool.fork_chunked([basic_worker.init_args()], default_chunk_size=default_chunk_size)
+        return vimap.pool.fork_chunked(
+            [basic_worker.init_args()],
+            default_chunk_size=default_chunk_size)
 
     def test_invalid_chunk_size(self):
         with T.assert_raises(ValueError):

@@ -73,7 +73,7 @@ def list_fds_other():
     # everything after.
     for i in xrange(3, max_fds_soft):
         try:
-            info = os.fstat(i)
+            os.fstat(i)
             yield i
         except OSError as e:
             if e.errno != errno.EBADF:
@@ -152,6 +152,7 @@ class TestBasicMapDoesntLeaveAroundFDs(T.TestCase):
     @T.setup_teardown
     def instrument_queue_initiation(self):
         old_init = vimap.queue_manager.VimapQueueManager.__init__
+
         def instrumented_init(*args, **kwargs):
             self.before_queue_manager_init = get_open_fds()
             old_init(*args, **kwargs)

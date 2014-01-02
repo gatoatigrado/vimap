@@ -14,9 +14,12 @@ import vimap.real_worker_routine
 
 DebugResult = namedtuple('DebugResult', ['uid', 'input', 'output'])
 
-get_func = lambda x: lambda y: x + y
+
 class UnpickleableAndUnprintable(tuple):
     __str__ = __repr__ = NotImplemented
+
+
+get_func = lambda x: lambda y: x + y
 unpickleable = UnpickleableAndUnprintable((get_func(3), 3))
 
 
