@@ -79,10 +79,12 @@ class PerformanceTest(T.TestCase):
     def test_performance(self):
         # NOTE: Avoid hyperthreading, which doesn't help performance
         # in our test case.
-        num_workers = min(8, multiprocessing.cpu_count() / 2)
+        num_workers = min(4, multiprocessing.cpu_count() / 2)
         T.assert_gt(num_workers, 1, "Too few cores to run performance test.")
 
-        inputs = tuple(xrange(7000, 7100))
+        start = 15000
+        num_inputs = 2 * num_workers
+        inputs = tuple(xrange(start, start + num_inputs))
 
         def factor_sequential():
             for i in inputs:
@@ -97,14 +99,14 @@ class PerformanceTest(T.TestCase):
         efficiency = speedup_ratio / num_workers
         print("Easy performance test efficiency: {0:.1f}% ({1:.1f}x speedup)".format(
             efficiency * 100., speedup_ratio))
-        T.assert_gt(efficiency, 0.70, "Failed performance test!!")
+        T.assert_gt(efficiency, 0.65, "Failed performance test!!")
 
     @_retry_test
     def test_chunking_really_is_faster(self):
         """Chunking should be faster when the tasks are really small (so queue
         communication overhead is the biggest factor).
         """
-        inputs = tuple(xrange(10, 100)) * 10
+        inputs = tuple(xrange(1, 10)) * 1000
         normal_pool = vimap.pool.fork_identical(factorial_worker, num_workers=2)
         chunked_pool = vimap.pool.fork_identical_chunked(factorial_worker, num_workers=2)
 
@@ -116,7 +118,7 @@ class PerformanceTest(T.TestCase):
 
         speedup_ratio = self.get_speedup_factor(factor_normal, factor_chunked, 2)
         print("Chunked performance test: {0:.1f}x speedup".format(speedup_ratio))
-        T.assert_gt(speedup_ratio, 10)
+        T.assert_gt(speedup_ratio, 5)
 
     def run_big_fork_test(self, time_sleep_s, num_workers, num_inputs, num_test_iterations):
         """Common setup for the big fork test; see usage in the two tests below.
