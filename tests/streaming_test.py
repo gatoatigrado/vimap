@@ -66,11 +66,6 @@ class StreamingTest(T.TestCase):
         # non-blocking read-ahead with.
         T.assert_lte(
             streaming_lookahead,
-            2 * pool.qm.max_real_in_flight,
-            "Shouldn't have put much more than max_real_in_flight elements on "
-            "the input queue (this test can *very* occasionally flake).")
-        T.assert_lte(
-            streaming_lookahead,
             pool.qm.max_total_in_flight,
             "max_total_in_flight is a hard upper bound, but was violated.")
 

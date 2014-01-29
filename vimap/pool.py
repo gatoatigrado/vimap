@@ -246,8 +246,7 @@ class VimapPool(object):
                 uid, typ, output = self.qm.pop_output()
 
                 # Spool more so we don't exit prematurely
-                if self.qm.num_total_in_flight < len(self.processes):
-                    self.spool_input(close_if_done=close_if_done)
+                self.spool_input(close_if_done=close_if_done)
 
                 inp = self.get_corresponding_input(uid, output)
                 yield inp, output, typ
