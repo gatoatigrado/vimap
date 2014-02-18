@@ -3,6 +3,9 @@ tests: _PHONY
 
 test: _PHONY tests
 
+test-no-performance: _PHONY
+	tox -- --exclude-suite=performance tests
+
 coverage: _PHONY
 	tox -e coverage
 

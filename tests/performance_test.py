@@ -57,6 +57,7 @@ def _retry_test(test_fcn):
     return inner
 
 
+@T.suite("performance", "These tests may flake if your testing server is overloaded.")
 class PerformanceTest(T.TestCase):
     def get_speedup_factor(self, baseline_fcn, optimized_fcn, num_tests):
         baseline_performance = timeit.timeit(baseline_fcn, number=num_tests)
