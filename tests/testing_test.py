@@ -74,8 +74,8 @@ class NoWarningsTest(T.TestCase):
     def test_no_warnings(self):
         with mock.patch('sys.stderr') as stderr:
             vimap.exception_handling.print_warning('')
-            stderr.write.assert_called()
-            stderr.flush.assert_called()
+            T.assert_equal(True, stderr.write.called)
+            T.assert_equal(True, stderr.flush.called)
 
         with T.assert_raises(AssertionError):
             with vimap.testing.no_warnings():
