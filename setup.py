@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name="vimap",
-    version="0.1.5",
+    version="0.1.6",
     provides=["vimap"],
     author="gatoatigrado",
     author_email="gatoatigrado@gmail.com",
