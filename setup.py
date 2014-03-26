@@ -18,7 +18,7 @@ setup(
         "Intended Audience :: Developers",
         "Development Status :: 3 - Alpha",
     ],
-    install_requires=['testify'],
+    install_requires=[],
     packages=find_packages(exclude=['tests*']),
     long_description="""vimap -- variations on imap, not in C
 
