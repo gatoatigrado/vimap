@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name="vimap",
-    version="0.1.5",
+    version="0.1.6",
     provides=["vimap"],
     author="gatoatigrado",
     author_email="gatoatigrado@gmail.com",
@@ -18,7 +18,7 @@ setup(
         "Intended Audience :: Developers",
         "Development Status :: 3 - Alpha",
     ],
-    install_requires=['testify'],
+    install_requires=[],
     packages=find_packages(exclude=['tests*']),
     long_description="""vimap -- variations on imap, not in C
 
