@@ -1,6 +1,13 @@
 vimap changelog
 =================
 
+0.1.6 (2014-03-26)
+--------------------
+
+- No longer specify testify in setup.py's install_requires. It is already
+  in requirements-dev and this prevents testify/mock from being installed
+  if you use vimap in production.
+
 0.1.5 (2014-01-02)
 --------------------
 
