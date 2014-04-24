@@ -108,5 +108,6 @@ class FileRunner(object):
             serializer.dump(result, self.options.outfile)
         else:
             if serializer:
-                result = serializer.dumps(result)
-            pprint.pprint(result)
+                print serializer.dumps(result)
+            else:
+                pprint.pprint(result)
