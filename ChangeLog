@@ -1,6 +1,11 @@
 vimap changelog
 =================
 
+0.1.7 (2014-04-24)
+- Added VimapFold and FileRunner convenience classes to ext.
+  This allows people to easily make vimap jobs that run over a bunch of files
+  in parallel and fold the output together
+
 0.1.6 (2014-03-26)
 --------------------
 
