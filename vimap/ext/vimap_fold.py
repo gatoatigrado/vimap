@@ -1,3 +1,7 @@
+from abc import ABCMeta
+from abc import abstractmethod
+from abc import abstractproperty
+
 import vimap
 import vimap.worker_process
 from file_runner import FileRunner
@@ -10,6 +14,8 @@ class VimapFold(object):
     map to each piece of your input in parallel and then fold together
     all the results.
     """
+    __metaclass__ = ABCMeta
+
     VIMAP_RUNNER = FileRunner
 
     @vimap.worker_process.instancemethod_worker
@@ -17,6 +23,7 @@ class VimapFold(object):
         for inp in worker_input:
             yield self.map(inp)
 
+    @abstractmethod
     def map(self, inp):
         """Perform an operation on the provided input.
 
@@ -28,7 +35,7 @@ class VimapFold(object):
         """
         return {}
 
-    @property
+    @abstractproperty
     def initial_value(self):
         """The initial value of the computation
 
@@ -39,6 +46,7 @@ class VimapFold(object):
         """
         return None
 
+    @abstractmethod
     def fold(self, global_result, map_result):
         """Fold a newly acquired result into the global result
 

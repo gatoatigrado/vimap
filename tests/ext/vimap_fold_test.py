@@ -1,10 +1,31 @@
-from StringIO import StringIO
+import re
 from contextlib import nested
 
 import mock
 import testify as T
 
-from vimap.testing import VimapFoldWordcount
+from vimap.ext.vimap_fold import VimapFold
+
+
+WORD_RE = re.compile(r"[\w']+")
+
+
+class VimapFoldWordcount(VimapFold):
+    """Count the number of words in the input files"""
+
+    def map(self, infile):
+        result = 0
+        with open(infile, 'r') as f:
+            for line in f:
+                result += len(WORD_RE.findall(line))
+        return result
+
+    @property
+    def initial_value(self):
+        return 0
+
+    def fold(self, accum, value):
+        return accum + value
 
 
 class MockOptions(object):
@@ -21,6 +42,8 @@ class WordCountTest(T.TestCase):
         with nested(
                 mock.patch.object(word_counter.VIMAP_RUNNER,
                                   'parse_options', MockOptions),
-                mock.patch('sys.stdout', new_callable=StringIO)) as (_, out):
+                mock.patch.object(word_counter.VIMAP_RUNNER,
+                                  'output_result')) as (_, output_mock):
             word_counter.run()
-            T.assert_equal(int(out.getvalue()), 12)
+            ((value,), _), = output_mock.call_args_list
+            T.assert_equal(value, 19)
