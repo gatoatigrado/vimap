@@ -1,37 +1,28 @@
-import datetime
-import glob
-import optparse
-import pickle
-import pprint
-import sys
-
 import vimap
-import vimap.pool
 import vimap.worker_process
+from file_runner import FileRunner
 
 
 class VimapFold(object):
     """Helper class to do the common task of map + fold on files
 
     Typically one defines map, intial_value, and fold, which will apply
-    map to each of your input files in parallel and then fold together
+    map to each piece of your input in parallel and then fold together
     all the results.
     """
-    progress = False
+    VIMAP_RUNNER = FileRunner
 
     @vimap.worker_process.instancemethod_worker
-    def read_file_process_data(self, files):
-        for f in files:
-            if self.progress:
-                print "Processing", f
-            yield self.map(f)
+    def read_input_process_data(self, worker_input):
+        for inp in worker_input:
+            yield self.map(inp)
 
-    def map(self, infile):
-        """Perform an operation on the provided infile.
+    def map(self, inp):
+        """Perform an operation on the provided input.
 
         NOTE: This function executes in parallel
 
-        :param infile: The name of the file to open and process.
+        :param inp: The input to do something with
         :returns: The result of the computation, can be any type as long as
                   your fold function knows what to do.
         """
@@ -62,57 +53,11 @@ class VimapFold(object):
         """
         return global_result
 
-    def parse_options(self):
-        parser = optparse.OptionParser()
-
-        parser.add_option('-i', '--data-directory', dest='datadir',
-                          help='Directory containing files to read')
-        parser.add_option('-g', '--data-glob', dest='dataglob',
-                          help='Glob pattern to apply to the data directory')
-        parser.add_option('-o', '--output', dest='outfile',
-                          help='File to write output to as pickled data',
-                          metavar="FILE")
-        parser.add_option('-n', '--num-workers', dest='num_workers',
-                          help='Number of workers to spin up',
-                          default=4, type=int)
-        parser.add_option('-p', '--progress', dest='progress',
-                          action="store_true", help='Show progress on files')
-
-        options, args = parser.parse_args()
-
-        if not(options.datadir and options.dataglob):
-            print "ERROR: You must supply a data directory and a data glob\n"
-            parser.print_help()
-            sys.exit(1)
-
-        return options
-
     def run(self):
-        start = datetime.datetime.now()
-
-        options = self.parse_options()
-        self.progress = options.progress
-
-        files = glob.glob(options.datadir + options.dataglob)
-        pool = vimap.pool.fork_identical(
-            self.read_file_process_data,
-            num_workers=options.num_workers,
-        )
+        runner = self.VIMAP_RUNNER(self.read_input_process_data)
 
         final_data = self.initial_value
-        for input, output in pool.imap(files).zip_in_out():
+        for input, output in runner.run_function_over_input():
             final_data = self.fold(final_data, output)
 
-        end = datetime.datetime.now()
-
-        if self.progress:
-            print ""
-            print " Started at: ", start.isoformat()
-            print "Finished at: ", end.isoformat()
-            print "Processed %d files in %d seconds" % (len(files), (end-start).seconds)
-
-        if options.outfile:
-            with open(options.outfile, 'w') as outfile:
-                pickle.dump(final_data, outfile)
-        else:
-            pprint.pprint(final_data)
+        runner.output_result(final_data)

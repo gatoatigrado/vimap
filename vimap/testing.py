@@ -5,6 +5,7 @@ import functools
 import itertools
 import multiprocessing
 import multiprocessing.queues
+import re
 import traceback
 from collections import namedtuple
 
@@ -13,6 +14,8 @@ import mock
 import vimap.exception_handling
 import vimap.pool
 import vimap.real_worker_routine
+from vimap.ext.vimap_fold import VimapFold
+
 
 DebugResult = namedtuple('DebugResult', ['uid', 'input', 'output'])
 
@@ -198,3 +201,24 @@ def mock_debug_pool():
 
 def mock_serial_pool():
     return mock.patch.object(vimap.pool, 'VimapPool', SerialPool)
+
+
+WORD_RE = re.compile(r"[\w']+")
+
+
+class VimapFoldWordcount(VimapFold):
+    """Count the number of words in the input files"""
+
+    def map(self, infile):
+        result = 0
+        with open(infile, 'r') as f:
+            for line in f:
+                result += len(WORD_RE.findall(line))
+        return result
+
+    @property
+    def initial_value(self):
+        return 0
+
+    def fold(self, accum, value):
+        return accum + value
