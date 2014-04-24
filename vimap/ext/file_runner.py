@@ -2,13 +2,15 @@
 """
 An extenstion to vimap's functionality that makes it easy to run an arbitrary
 function in parallel that expects file names as input and then outputs a
-result to either a file or stdout. Most of this is just optparse manipulation.
+result to either a file or stdout. Most of this is just argparse manipulation.
 """
 import datetime
 import glob
-import optparse
+import json
 import pickle
 import pprint
+
+import argparse
 
 import vimap.pool
 
@@ -22,7 +24,7 @@ class FileRunner(object):
     :param progress: A boolean that indicates if the runner should print
                      progress information to the screen
     :param options: The result of parsing all options, just the options part
-                    of optparse.OptionParser.parse_args()
+                    of argparse.ArgumentParser.parse_args()
     """
     def __init__(self, worker_fcn):
         self.worker_fcn = worker_fcn
@@ -30,26 +32,34 @@ class FileRunner(object):
         self.options = self.parse_options()
 
     def parse_options(self):
-        parser = optparse.OptionParser()
+        parser = argparse.ArgumentParser()
 
-        parser.add_option('-i', '--data-directory', dest='datadir',
-                          help='Directory containing files to read')
-        parser.add_option('-g', '--data-glob', dest='dataglob', default='*',
-                          help='Glob pattern to apply to the data directory')
-        parser.add_option('-o', '--output', dest='outfile',
-                          help='File to write output to as pickled data',
-                          metavar="FILE")
-        parser.add_option('-n', '--num-workers', dest='num_workers',
-                          help='Number of workers to spin up',
-                          default=4, type="int")
-        parser.add_option('-p', '--progress', dest='progress',
-                          action="store_true", help='Show progress on files')
+        parser.add_argument(dest='datadir', nargs=1, type=str,
+                            help='Directory containing files to read')
+        parser.add_argument('-g', '--data-glob', dest='dataglob', default='*',
+                            help='Glob pattern to apply to the data directory')
+        parser.add_argument('-o', '--output-file', dest='outfile',
+                            help='File to write output to.',
+                            type=argparse.FileType('w'),
+                            metavar="FILE")
+        parser.add_argument('-j', '--json', dest='output_format',
+                            const=json, action='store_const',
+                            help='Format output as json')
+        parser.add_argument('-k', '--pickle', dest='output_format',
+                            const=pickle, action='store_const',
+                            help='Format output as pickled data')
+        parser.add_argument('-n', '--num-workers', dest='num_workers',
+                            help='Number of workers to spin up',
+                            default=4, type=int)
+        parser.add_argument('-p', '--progress', dest='progress',
+                            action="store_true", help='Show progress on files')
 
-        options, args = parser.parse_args()
+        options = parser.parse_args()
 
-        if not(options.datadir):
+        if not options.datadir or len(options.datadir) > 1:
             parser.print_help()
-            parser.error("You must supply a data directory")
+            parser.error("You must supply a single data directory")
+        options.datadir = options.datadir[0]
 
         return options
 
@@ -91,8 +101,12 @@ class FileRunner(object):
 
     def output_result(self, result):
         """Displays the result of compution either to a file or to stdout"""
+        serializer = self.options.output_format
+
         if self.options.outfile:
-            with open(self.options.outfile, 'w') as outfile:
-                pickle.dump(result, outfile, protocol=pickle.HIGHEST_PROTOCOL)
+            serializer = serializer or pickle
+            serializer.dump(result, self.options.outfile)
         else:
+            if serializer:
+                result = serializer.dumps(result)
             pprint.pprint(result)
