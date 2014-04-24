@@ -14,6 +14,7 @@ import vimap.exception_handling
 import vimap.pool
 import vimap.real_worker_routine
 
+
 DebugResult = namedtuple('DebugResult', ['uid', 'input', 'output'])
 
 
