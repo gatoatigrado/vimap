@@ -9,6 +9,7 @@ testing though...
 from __future__ import absolute_import
 from __future__ import print_function
 
+import multiprocessing
 import multiprocessing.queues
 import os
 import sys
@@ -28,8 +29,11 @@ class WorkerRoutine(object):
 
     def debug(self, message, *fmt_args, **fmt_kwargs):
         if self.debug_enabled:
-            print("Worker[{0}] {1}".format(
-                self.index, message.format(*fmt_args, **fmt_kwargs)))
+            print("Worker[{0}, {pid}] {msg}".format(
+                self.index,
+                pid=multiprocessing.current_process().pid,
+                msg=message.format(*fmt_args, **fmt_kwargs))
+            )
 
     def worker_input_generator(self):
         '''Call this on the worker processes: yields input.'''

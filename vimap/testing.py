@@ -84,6 +84,12 @@ class DebugPool(vimap.pool.VimapPool):
         self.debug_results.append(DebugResult(uid, input_, output))
         return input_
 
+    # FIXME(gatoatigrado|2014-07-31): Our SerialProcesses don't actually get
+    # started/stopped like normal worker routines. So, we're going to just
+    # pretend that they are stopped when join_and_consume_output() is called
+    def join_and_consume_output(self):
+        pass
+
 
 def _requires_queue(fcn):
     @functools.wraps(fcn)
@@ -119,7 +125,7 @@ class SerialQueue(object):
         assert not hasattr(self, 'queue'), "you must call close() first."
 
     @_requires_queue
-    def get_nowait(self):
+    def get_nowait(self, timeout=None):
         if not self.queue:
             raise multiprocessing.queues.Empty()
         else:
@@ -128,7 +134,7 @@ class SerialQueue(object):
     get = get_nowait
 
     @_requires_queue
-    def put_nowait(self, item):
+    def put_nowait(self, item, timeout=None):
         self.queue.append(item)
 
     put = put_nowait
@@ -144,9 +150,13 @@ class SerialQueueManager(vimap.queue_manager.VimapQueueManager):
 
 class SerialProcess(multiprocessing.Process):
     '''A process that doesn't actually fork.'''
+    _is_alive = False
+
+    def is_alive(self):
+        return self._is_alive
 
     def start(self):
-        pass
+        self._is_alive = True
 
     def join(self):
         pass
@@ -191,6 +201,19 @@ class SerialPool(DebugPool):
         while not self.qm.input_queue.empty():
             worker_proc = workers.next()
             worker_proc._target(*worker_proc._args, **worker_proc._kwargs)
+
+
+def repeat_test_to_catch_flakiness(times):
+    """Decorator that repeats a test to help catch flakiness.
+
+    :param times: Number of times to repeat
+    :type times: int
+    """
+    def fcn_helper(fcn):
+        return functools.wraps(fcn)(
+            lambda *args, **kwargs: [fcn(*args, **kwargs) for _ in xrange(times)]
+        )
+    return fcn_helper
 
 
 def mock_debug_pool():

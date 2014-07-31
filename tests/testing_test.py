@@ -35,7 +35,8 @@ class SerialPoolTest(T.TestCase):
     @mock.patch('multiprocessing.Process.start')
     def test_serial_pool_doesnt_fork(self, start):
         processes = vimap.pool.fork(worker_proc.init_args(init=i) for i in [1, 1, 1])
-        processes.imap([1, 2, 3]).block_ignore_output()
+        processes.imap([1, 2, 3])
+        processes.block_ignore_output()
 
         for i in [1, 2, 3]:
             T.assert_equal(processes.output_for_input[i], i + 1)

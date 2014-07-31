@@ -12,6 +12,7 @@ import itertools
 import multiprocessing
 import multiprocessing.queues
 import time
+from vimap import exception_handling
 
 import vimap.util
 
@@ -25,7 +26,7 @@ class VimapQueueManager(object):
     '''Args: Sequence of vimap workers.'''
     queue_class = multiprocessing.queues.Queue
 
-    def __init__(self, max_real_in_flight, max_total_in_flight, debug=False):
+    def __init__(self, max_real_in_flight, max_total_in_flight, timeouts_config, debug=False):
         '''
         Arguments:
             max_real_in_flight -- number of in-flight operations sent to
@@ -33,10 +34,14 @@ class VimapQueueManager(object):
             max_total_in_flight -- number of in-flight operations including
                 temporary master-process output queue
         '''
+        self.timeouts_config = timeouts_config
         self.max_real_in_flight = min(_MAX_IN_FLIGHT, max_real_in_flight)
         self.max_total_in_flight = max_total_in_flight
         self.input_queue = self.queue_class(max_real_in_flight)
         self.output_queue = self.queue_class(max_real_in_flight)
+
+        # Temporary input queue
+        self.tmp_input_queue = []
 
         # Temporary output queue (enqueue with `append`, dequeue with `pop(0)`).
         # Prevents threads from blocking
@@ -108,7 +113,7 @@ class VimapQueueManager(object):
         return self.num_real_in_flight + len(self.tmp_output_queue)
 
     def put_input(self, x):
-        self.input_queue.put(x)
+        self.input_queue.put(x, timeout=self.timeouts_config.input_queue_put_timeout)
         self.num_real_in_flight += 1
 
     def feed_out_to_tmp(self, max_time_s=None):
@@ -127,20 +132,27 @@ class VimapQueueManager(object):
         a long time to transfer data back, it might be worth skipping out
         of here and continuing the main process, so it can e.g. queue more
         input and keep workers busy.
+
+        :returns: True if it got a new item, False otherwise
+        :rtype: bool
         '''
         start_time = time.time()
+        got_item = False
         while (max_time_s is None) or (time.time() - start_time < max_time_s):
             try:
                 item = self.output_queue.get_nowait()
                 self.num_real_in_flight -= 1  # only decrement if no exceptions were thrown
 
+                self.tmp_output_queue.append(item)
+                got_item = True
+
                 if self.debug:
                     print("Main thread: got item #{0}".format(item[0]))
                 for hook in self.output_hooks:
                     hook(item)
-                self.tmp_output_queue.append(item)
             except multiprocessing.queues.Empty:
                 break
+        return got_item
 
     def pop_output(self):
         '''Essentially a buffered version of output_queue.get_nowait().'''
@@ -165,11 +177,29 @@ class VimapQueueManager(object):
         self.feed_out_to_tmp()
         n_to_put = min(
             self.max_real_in_flight - self.num_real_in_flight,
-            self.max_total_in_flight - self.num_total_in_flight)
+            self.max_total_in_flight - self.num_total_in_flight
+        )
 
         if n_to_put > 0:
-            inputs = list(itertools.islice(input_iterator, n_to_put))
-            for x in inputs:
-                self.put_input(x)
-            if not inputs:
+            self.tmp_input_queue += list(
+                itertools.islice(input_iterator, n_to_put - len(self.tmp_input_queue))
+            )
+
+            if not self.tmp_input_queue:
                 return True
+            try:
+                while self.tmp_input_queue:
+                    x = self.tmp_input_queue[0]
+                    self.put_input(x)
+                    self.tmp_input_queue.pop(0)
+            except multiprocessing.queues.Full:
+                pass
+
+    def send_stop_tokens(self, num_tokens):
+        try:
+            for _ in xrange(num_tokens):
+                self.input_queue.put(None, timeout=self.timeouts_config.general_timeout)
+        except multiprocessing.queues.Full:
+            exception_handling.print_warning(
+                "Failed to send all stop tokens (timeout exceeded)"
+            )
