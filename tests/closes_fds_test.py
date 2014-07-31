@@ -22,7 +22,6 @@ from vimap.testing import repeat_test_to_catch_flakiness
 import vimap.worker_process
 
 
-
 # decrypt POSIX stuff
 readable_mode_strings = {
     'directory': stat.S_ISDIR,
