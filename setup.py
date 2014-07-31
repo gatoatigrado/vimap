@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name="vimap",
-    version="0.1.7",
+    version="0.1.8-alpha-deadlock-quickfix",
     provides=["vimap"],
     author="gatoatigrado",
     author_email="gatoatigrado@gmail.com",

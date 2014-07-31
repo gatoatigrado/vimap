@@ -7,16 +7,19 @@ from __future__ import print_function
 
 import errno
 import logging
-import mock
 import os
 import os.path
 import resource
 import stat
+from collections import namedtuple
+
+import mock
 import testify as T
+
 import vimap.pool
 import vimap.queue_manager
+from vimap.testing import repeat_test_to_catch_flakiness
 import vimap.worker_process
-from collections import namedtuple
 
 
 # decrypt POSIX stuff
@@ -141,13 +144,6 @@ def basic_worker(xs):
         yield x + 1
 
 
-def repeat(times):
-    """Repeats a test to help catch flakiness."""
-    def fcn_helper(fcn):
-        return lambda *args, **kwargs: [fcn(*args, **kwargs) for _ in xrange(times)]
-    return fcn_helper
-
-
 class TestBasicMapDoesntLeaveAroundFDs(T.TestCase):
     @T.setup_teardown
     def instrument_queue_initiation(self):
@@ -166,7 +162,7 @@ class TestBasicMapDoesntLeaveAroundFDs(T.TestCase):
                 instrumented_init):
             yield
 
-    @repeat(30)
+    @repeat_test_to_catch_flakiness(30)
     def test_all_fds_cleaned_up(self):
         initial_open_fds = get_open_fds()
         pool = vimap.pool.fork_identical(basic_worker, num_workers=1)

@@ -8,11 +8,13 @@ import math
 import mock
 import testify as T
 
+import vimap.config
 import vimap.exception_handling
 import vimap.pool
 import vimap.testing
 import vimap.worker_process
 from vimap.exception_handling import ExceptionContext
+from vimap.testing import repeat_test_to_catch_flakiness
 
 
 @vimap.worker_process.worker
@@ -63,6 +65,7 @@ class ExceptionsTest(T.TestCase):
             (worker_f.init_args(init=i)
              for i
              in range(3)),
+            timeouts_config=vimap.config.TimeoutConfig(general_timeout=0.5),
             debug=False,  # NOTE: Uncomment this to debug
         )
         # Give every worker something to chew on.
@@ -112,6 +115,16 @@ class ExceptionsTest(T.TestCase):
         # in the chunked case), there should always be an exception printed for
         # each worker before the pool is shut down.
         self.check_printed_exceptions(print_exc_mock, ValueError("hello"), 3)
+
+    @vimap.testing.queue_feed_ignore_ioerrors_mock
+    @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
+    @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
+    def test_exception_before_iteration_doesnt_freeze(self, print_exc_mock, print_warning_mock):
+        """This test checks that if exceptions are raised and a lot of input is queued
+        up, the system will stop normally.
+        """
+        for inp, ec, typ in self.run_test_pool(worker_raise_exc_immediately, inputs=range(1, 101)):
+            pass
 
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_exception_after_iteration_not_returned(self, print_exc_mock):
@@ -185,12 +198,14 @@ class ExceptionsTest(T.TestCase):
         errors = [serialize_error(call_args[0].value) for call_args, _ in calls]
         T.assert_equal(errors, [serialize_error(ValueError("{0} curley braces!"))])
 
+    @repeat_test_to_catch_flakiness(5)
     @mock.patch.object(vimap.exception_handling, 'print_warning', autospec=True)
     @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
     def test_fail_after_a_while(self, print_exc_mock, print_warning_mock):
         processes = self.fork_pool(
             (worker_raise_exc_with_curleys.init_args(init=i) for i in xrange(100)),
-            in_queue_size_factor=2)
+            in_queue_size_factor=2
+        )
         processes.imap([-1] * 3000 + list(range(50)))
 
         # Check yielded output.

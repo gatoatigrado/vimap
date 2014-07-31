@@ -32,6 +32,7 @@ import sys
 import time
 import weakref
 
+import vimap.config
 import vimap.exception_handling
 import vimap.queue_manager
 import vimap.real_worker_routine
@@ -58,16 +59,32 @@ class VimapPool(object):
             self,
             worker_sequence,
             in_queue_size_factor=10,
-            timeout=5.0,
+            timeouts_config=vimap.config.TimeoutConfig(5.0),
             max_total_in_flight=100000,
-            debug=False):
+            debug=False
+    ):
+        """
+        Get a new vimap pool
 
+        :param worker_sequence: Sequence of workers
+        :type worker_sequence:
+        :param in_queue_size_factor:
+            How much data to spool.
+        :type in_queue_size_factor: int
+        :param timeouts_config: Configuration related to timeouts_config
+        :type timeouts_config: vimap.config.TimeoutConfig
+        :param max_total_in_flight:
+        :type max_total_in_flight:
+        :param debug: print debugging information
+        :type debug: bool
+        """
         self.in_queue_size_factor = in_queue_size_factor
         self.worker_sequence = list(worker_sequence)
 
         self.qm = self.queue_manager_class(
             max_real_in_flight=self.in_queue_size_factor * len(self.worker_sequence),
             max_total_in_flight=max_total_in_flight,
+            timeouts_config=timeouts_config,
             debug=debug)
 
         # Don't prevent `self` from being GC'd
@@ -83,7 +100,7 @@ class VimapPool(object):
 
         self.processes = []
 
-        self.timeout = timeout
+        self.timeouts_config = timeouts_config
 
         self.input_uid_ctr = 0
         self.input_uid_to_input = {}  # input to keep around until handled
@@ -120,7 +137,9 @@ class VimapPool(object):
                 target=routine.run,
                 args=(self.qm.input_queue, self.qm.output_queue))
             process.daemon = True  # processes will be controlled by parent
+            assert not process.is_alive()
             process.start()
+            assert process.is_alive(), "should be marked alive after starting"
             self.processes.append(process)
         return self
 
@@ -145,8 +164,9 @@ class VimapPool(object):
         the stop token is not a tuple, so inputs can't be mistaken for stop
         tokens and vice-versa.
         '''
-        for _ in self.processes:
-            self.qm.input_queue.put(None)
+        # FIXME(gatoatigrado|2014-07-31): For some reason, sending stop
+        # tokens for only alive processes fails.
+        self.qm.send_stop_tokens(len(self.processes))
 
     @vimap.util.instancemethod_runonce(depends=['send_stop_tokens'])
     def join_and_consume_output(self):
