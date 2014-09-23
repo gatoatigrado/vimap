@@ -190,7 +190,7 @@ class ExceptionsTest(T.TestCase):
     def test_a_few_error(self, print_exc_mock):
         processes = self.fork_pool(
             (worker_raise_exc_with_curleys.init_args(init=i) for i in xrange(2)),
-            in_queue_size_factor=2)
+            max_real_in_flight_factor=2)
         processes.imap([1]).block_ignore_output()
         del processes
 
@@ -204,7 +204,7 @@ class ExceptionsTest(T.TestCase):
     def test_fail_after_a_while(self, print_exc_mock, print_warning_mock):
         processes = self.fork_pool(
             (worker_raise_exc_with_curleys.init_args(init=i) for i in xrange(100)),
-            in_queue_size_factor=2
+            max_real_in_flight_factor=2
         )
         processes.imap([-1] * 3000 + list(range(50)))
 
