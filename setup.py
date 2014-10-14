@@ -35,7 +35,7 @@ else:
 
 setup(
     name="vimap",
-    version="0.1.8-alpha-deadlock-quickfix",
+    version="0.1.9-alpha-deadlock-quickfix",
     provides=["vimap"],
     author="gatoatigrado",
     author_email="gatoatigrado@gmail.com",

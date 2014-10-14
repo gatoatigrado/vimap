@@ -58,9 +58,9 @@ class VimapPool(object):
     def __init__(
             self,
             worker_sequence,
-            in_queue_size_factor=10,
+            max_real_in_flight_factor=10,
+            max_total_in_flight_factor=100,
             timeouts_config=vimap.config.TimeoutConfig(5.0),
-            max_total_in_flight=100000,
             debug=False
     ):
         """
@@ -68,22 +68,24 @@ class VimapPool(object):
 
         :param worker_sequence: Sequence of workers
         :type worker_sequence:
-        :param in_queue_size_factor:
+        :param max_real_in_flight_factor:
             How much data to spool.
-        :type in_queue_size_factor: int
+        :type max_real_in_flight_factor: int
+        :param max_total_in_flight_factor:
+            How much data to buffer in in-memory queues,
+            as well as actual FIFO queues.
+        :type max_total_in_flight_factor: int
         :param timeouts_config: Configuration related to timeouts_config
         :type timeouts_config: vimap.config.TimeoutConfig
-        :param max_total_in_flight:
-        :type max_total_in_flight:
         :param debug: print debugging information
         :type debug: bool
         """
-        self.in_queue_size_factor = in_queue_size_factor
+        self.max_real_in_flight_factor = max_real_in_flight_factor
         self.worker_sequence = list(worker_sequence)
 
         self.qm = self.queue_manager_class(
-            max_real_in_flight=self.in_queue_size_factor * len(self.worker_sequence),
-            max_total_in_flight=max_total_in_flight,
+            max_real_in_flight=self.max_real_in_flight_factor * len(self.worker_sequence),
+            max_total_in_flight=max_total_in_flight_factor * len(self.worker_sequence),
             timeouts_config=timeouts_config,
             debug=debug)
 
