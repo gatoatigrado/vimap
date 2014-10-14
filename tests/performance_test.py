@@ -6,9 +6,12 @@ performance with parallel performance.
 from __future__ import absolute_import
 from __future__ import print_function
 
+import contextlib
 import functools
+import gc
 import logging
 import multiprocessing
+import resource
 import time
 import timeit
 
@@ -19,12 +22,31 @@ import vimap.pool
 import vimap.worker_process
 
 
+@contextlib.contextmanager
+def assert_memory_use(name, lower, upper):
+    rss = lambda: resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    gc.collect()
+    before = rss()
+    yield
+    gc.collect()
+    mem_mb = (rss() - before) / 1024.0
+    print("For {0}, memory use increased by {1:.2f} MB".format(name, mem_mb))
+    assert lower <= mem_mb, "Memory usage expected to increase by at least {0} MB".format(lower)
+    assert mem_mb < upper, "Memory usage expected to increase by at most {0} MB".format(upper)
+
+
 def factorial(n):
     '''dumb implementation of factorial function'''
     result = 1
     for i in xrange(2, n + 1):
         result *= i
     return result
+
+
+def urandom_stream(size_kb):
+    with open("/dev/urandom", "rb") as f:
+        for _ in xrange(size_kb):
+            yield f.read(1024)
 
 
 @vimap.worker_process.worker
@@ -39,6 +61,12 @@ def simple_sleep_worker(sleep_times):
     for time_to_sleep in sleep_times:
         time.sleep(time_to_sleep)
         yield None
+
+
+@vimap.worker_process.worker
+def string_length_worker(strings):
+    for string in strings:
+        yield len(string)
 
 
 def _retry_test(test_fcn):
@@ -134,6 +162,7 @@ class PerformanceTest(T.TestCase):
 
         return timeit.timeit(sleep_in_parallel, number=num_test_iterations) / num_test_iterations
 
+    @_retry_test
     def test_big_fork(self):
         """Tests that we can fork a large number of processes, each of which
         will wait for a few milliseconds, and return.
@@ -153,3 +182,20 @@ class PerformanceTest(T.TestCase):
         time_sleep_s = 0.2
         test_time = self.run_big_fork_test(time_sleep_s, 70, 71, 1)
         T.assert_gt(test_time, time_sleep_s * 2)
+
+    def test_memory_consumption_reading_input(self):
+        """Tests that memory usage increases when expected."""
+        with assert_memory_use("test-should-increase-read-urandom-streaming", 0, 0.5):
+            for _ in urandom_stream(size_kb=2048):
+                pass
+
+        with assert_memory_use("test-should-increase-read-urandom", 0.5, 11):
+            buf = list(urandom_stream(size_kb=10 * 1024))
+        buf.pop(0)
+
+    def test_memory_consumption_stream_processing(self):
+        """Tests that memory usage is constant when processing a large stream."""
+        pool = vimap.pool.fork_identical(string_length_worker)
+
+        with assert_memory_use("test-stream-40-mb", 0, 3):
+            pool.imap(urandom_stream(size_kb=40 * 1024)).block_ignore_output()
