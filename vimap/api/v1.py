@@ -13,22 +13,23 @@ Issues I'm trying to fix in this API:
 and, in general, of course just trying to make common cases
 easier.
 """
-import abc
-import contextlib
-import itertools
-from collections import namedtuple
-
-__author__ = 'gatoatigrado'
-
 from __future__ import absolute_import
 from __future__ import print_function
 
+import abc
+import contextlib
 import functools
+import itertools
+from collections import namedtuple
+
+
+__author__ = 'gatoatigrado'
 
 
 class Worker(object):
     __metaclass__ = abc.ABCMeta
 
+    @contextlib.contextmanager
     def post_fork_contextmanager(self, worker_index):
         yield
 
@@ -39,7 +40,7 @@ class Worker(object):
     def _as_old_worker(self):
         import vimap.worker_process
 
-        @vimap.worker_process
+        @vimap.worker_process.worker
         def old_worker_process(inputs, worker_index):
             with self.post_fork_contextmanager(worker_index):
                 for x in inputs:
@@ -71,7 +72,7 @@ def split_to_dict(data, key):
         False: (1, 3)
     }
     """
-    by_bins_iter = itertools.groupby(sorted(data, key=pred), key=pred)
+    by_bins_iter = itertools.groupby(sorted(data, key=key), key=key)
     return dict((k, tuple(v)) for k, v in by_bins_iter)
 
 
@@ -94,10 +95,11 @@ class SmartKwargsWorker(Worker):
             for key in kwargs.keys()
         )
 
-    def post_fork_initialize(self, worker_index):
+    @contextlib.contextmanager
+    def post_fork_contextmanager(self, worker_index):
         normal, postfork = split_to_fixed_bins(
             self._prefork_kwargs.items(),
-            (lambda key, x: (
+            (lambda (key, x): (
                 'postfork'
                 if isinstance(x, PostForkContextManager)
                 else 'normal'
@@ -109,10 +111,14 @@ class SmartKwargsWorker(Worker):
         vars(self).update(dict(normal))
 
         # set all other variables
-        with contextlib.nested(*[v for k, v in postfork]) as values:
-            vars(self.update(
+        ctx_managers = [
+            contextlib.contextmanager(v.inner_fcn)(worker_index)
+            for k, v in postfork
+        ]
+        with contextlib.nested(*ctx_managers) as values:
+            vars(self).update(
                 dict(zip([k for k, v in postfork], values))
-            ))
+            )
             yield
 
 
@@ -131,7 +137,8 @@ class WorkerFromFcn(SmartKwargsWorker):
 
 def post_fork_closable_arg(opener, call_with_worker_index=False):
     """
-    Common case for things like connection openers.
+    Common case for things like connection openers. Runs `opener`
+    on the worker functions.
 
     :param opener:
         A 0 or 1-argument function that returns a closable object
@@ -164,5 +171,26 @@ def post_fork_closable_arg(opener, call_with_worker_index=False):
 fcn_worker = lambda fcn: functools.partial(WorkerFromFcn, fcn)
 
 
-def fork(worker, worker_indices):
-    pass
+@contextlib.contextmanager
+def fork(worker, worker_indices, **kwargs):
+    """
+
+    :param worker:
+    :param worker_indices:
+    :param kwargs:
+    :return:
+    :yields: vimap.pool.VimapPool
+    """
+    import vimap.pool
+    old_worker = worker._as_old_worker()
+
+    pool = None
+    try:
+        pool = vimap.pool.fork(
+            (old_worker.init_args(worker_index=i) for i in worker_indices),
+            **kwargs
+        )
+        yield pool
+    finally:
+        if pool is not None:
+            pool.finish_workers()
