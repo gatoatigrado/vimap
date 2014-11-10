@@ -14,7 +14,7 @@ This is a contrived example, since the communication is more expensive than
 computation, but let’s say you want to double a bunch of numbers in parallel.
 Your Hello World in Parallel could be,
 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```python
 import vimap.api.v1 as vimap
 
 @vimap.fcn_worker
@@ -26,12 +26,12 @@ with vimap.fork(double_it()) as pool:
     outputs = tuple(pool.imap(inputs))
 
 print outputs  # returns doubled numbers in arbitrary order, like (6, 8, 2, 4)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```
 
 Okay, great. But you really want to do some expensive / time-consuming work.
 Maybe making a bunch of HTTP requests, and processing the output.
 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```python
 import requests
 # NOTE: in the future, this will be just `import vimap`
 import vimap.api.v1 as vimap
@@ -53,7 +53,7 @@ with vimap.fork(
     outputs = tuple(pool.imap(inputs))
 
 print outputs  # ok, you probably don't really want this ...
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```
 
 Behind the scenes, what this will do is,
 
@@ -210,8 +210,8 @@ What do we aspire to do better than the regular `multiprocessing` library?
 
     [2]: <http://stackoverflow.com/q/2782961/81636>
 
--   Aims to have better worker exception handling --** multiprocessing will
-    leave around dead worker processes and FIFOs; we aim not to.**
+-   Aims to have better worker exception handling --\*\* multiprocessing will
+    leave around dead worker processes and FIFOs; we aim not to.\*\*
 
 -   Collection of common use cases (reading from files, etc.)
 
