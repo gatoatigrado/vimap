@@ -1,4 +1,4 @@
-<https://travis-ci.org/gatoatigrado/vimap>
+[![Build Status](https://travis-ci.org/gatoatigrado/vimap.png)](https://travis-ci.org/gatoatigrado/vimap)
 
 Variations on imap, not in C
 ============================
