@@ -5,32 +5,38 @@ from setuptools import setup
 
 
 # Robust-but-boilerplate code to detect the README path
-base_path = os.path.abspath(os.path.dirname(__file__))
+#
+# Note: For some reason, `tox` doesn't copy README.md into its build
+# directory. So, allow this to not exist.
+base_path = os.path.dirname(os.path.abspath(__file__))
 readme_path = os.path.join(base_path, 'README.md')
-assert os.path.isfile(readme_path), "Couldn't find README.md"
+
+
+# Default docs, in case the pandoc stuff doesn't work
+readme_rst = """vimap -- variations on imap, not in C
+
+The vimap package is designed to provide a more flexible alternative for
+multiprocessing.imap_unordered.  It aspires to support HTTP-like clients
+processing data, though contains nothing client-specific.
+"""
 
 
 # Mumbo jumbo to convert Markdown --> RST for PyPI
 #
 # brew install pandoc  # or whatever for your OS
 # pip install pyandoc
-try:
-    import pandoc
-except ImportError:
-    print("WARNING: COULD NOT IMPORT pandoc; YOU WON'T HAVE A NICE README")
-    readme_rst = """vimap -- variations on imap, not in C
+if os.path.isfile(readme_path):
+    try:
+        import pandoc
+    except ImportError:
+        print("WARNING: COULD NOT IMPORT pandoc; YOU WON'T HAVE A NICE README")
+    else:
+        def get_rst(markdown_file):
+            doc = pandoc.Document()
+            doc.markdown = open(markdown_file).read()
+            return doc.rst
 
-The vimap package is designed to provide a more flexible alternative for
-multiprocessing.imap_unordered.  It aspires to support HTTP-like clients
-processing data, though contains nothing client-specific.
-"""
-else:
-    def get_rst(markdown_file):
-        doc = pandoc.Document()
-        doc.markdown = open(markdown_file).read()
-        return doc.rst
-
-    readme_rst = get_rst(readme_path)
+        readme_rst = get_rst(readme_path)
 
 
 setup(
