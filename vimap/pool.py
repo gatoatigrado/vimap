@@ -154,6 +154,9 @@ class VimapPool(object):
                 "exceptions were caught (or only seen when the pool was "
                 "deleted)")
 
+    def __iter__(self):
+        return (v for k, v in self.zip_in_out())
+
     def all_processes_died(self, exception_check_optimization=True):
         if exception_check_optimization and (not self.has_exceptions):
             return False

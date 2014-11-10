@@ -20,6 +20,7 @@ import abc
 import contextlib
 import functools
 import itertools
+import multiprocessing
 from collections import namedtuple
 
 
@@ -57,6 +58,37 @@ class Worker(object):
 # Each argument to PostForkContextManager is the same as what's
 # passed to an @contextlib.contextmanager, except that
 PostForkContextManager = namedtuple("PostForkContextManager", ["inner_fcn"])
+
+
+def post_fork_closable_arg(opener, call_with_worker_index=False):
+    """
+    Common case for things like connection openers. Runs `opener`
+    on the worker functions.
+
+    :param opener:
+        A 0 or 1-argument function that returns a closable object
+    :type opener:
+        () -> Closable a, or
+        (worker_index,) -> Closable a
+    :param call_with_worker_index:
+        Whether `opener` is a 1-argument function, to be called
+        with the worker index, or not
+    :type call_with_worker_index: bool
+    :return:
+        A PostForkContextManager thing, suitable for passing into
+        SmartKwargsWorker classes.
+    """
+    def contextmanager_fcn(worker_index):
+        closable = (
+            opener(worker_index)
+            if call_with_worker_index
+            else opener()
+        )
+        try:
+            yield closable
+        finally:
+            closable.close()
+    return PostForkContextManager(contextmanager_fcn)
 
 
 def split_to_dict(data, key):
@@ -135,44 +167,13 @@ class WorkerFromFcn(SmartKwargsWorker):
         return self.worker_method(item, **non_fragile_vars)
 
 
-def post_fork_closable_arg(opener, call_with_worker_index=False):
-    """
-    Common case for things like connection openers. Runs `opener`
-    on the worker functions.
-
-    :param opener:
-        A 0 or 1-argument function that returns a closable object
-    :type opener:
-        () -> Closable a, or
-        (worker_index,) -> Closable a
-    :param call_with_worker_index:
-        Whether `opener` is a 1-argument function, to be called
-        with the worker index, or not
-    :type call_with_worker_index: bool
-    :return:
-        A PostForkContextManager thing, suitable for passing into
-        SmartKwargsWorker classes.
-    """
-    def contextmanager_fcn(worker_index):
-        closable = (
-            opener(worker_index)
-            if call_with_worker_index
-            else opener()
-        )
-        try:
-            yield closable
-        finally:
-            closable.close()
-    return PostForkContextManager(contextmanager_fcn)
-
-
 # convenience decorator if you like to write your worker
 # methods at global scope.
 fcn_worker = lambda fcn: functools.partial(WorkerFromFcn, fcn)
 
 
 @contextlib.contextmanager
-def fork(worker, worker_indices, **kwargs):
+def fork(worker, worker_indices=None, **kwargs):
     """
 
     :param worker:
@@ -183,6 +184,8 @@ def fork(worker, worker_indices, **kwargs):
     """
     import vimap.pool
     old_worker = worker._as_old_worker()
+
+    worker_indices = worker_indices or range(multiprocessing.cpu_count())
 
     pool = None
     try:
