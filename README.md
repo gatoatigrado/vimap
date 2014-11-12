@@ -46,7 +46,7 @@ inputs = (
 )
 with vimap.fork(
     get_url(
-        connection=vimap.post_fork_closable_arg(requests.Session)
+        connection=vimap.closable_resource(requests.Session)
     ),
     range(2)
 ) as pool:
@@ -70,8 +70,8 @@ Behind the scenes, what this will do is,
 -   The worker processes will make the requests, and put the responses on an
     output queue
 
--   Once the worker processes are done, our `post_fork_closable_arg` decorator
-    will close the `requests.Session()` objects.
+-   Once the worker processes are done, our `closable_resource` decorator will
+    close the `requests.Session()` objects.
 
 API overview
 ------------
@@ -79,9 +79,12 @@ API overview
 ### Worker declarations
 
 Workers are instances of `vimap.api.v1.Worker`. This class primarily defines
-methods `post_fork_context(worker_index)`, which is a `contextmanager` for
-setting up resources and the like on worker startup/shutdown, and
-`process(item)`, which maps each input item to an output.
+methods,
+
+-   `post_fork_context(worker_index)`, which is a `contextmanager` for setting
+    up resources and the like on worker startup/shutdown, and
+
+-   `process(item)`, which maps each input item to an output.
 
 ### Worker resources
 
@@ -108,9 +111,18 @@ def make_connection(worker_index):
 
 When you decorate `get_url` with `@vimap.fcn_worker`, it creates a function that
 will take keyword arguments for instantiating resources, and returns a
-`Worker()` instance. Any kwargs that are “tagged” as post-fork context managers
-will be used as such on the worker processes, otherwise they’ll be passed
-unchanged. For example,
+`Worker()` instance. To reiterate,
+
+-   The type of `get_url` is `**kwargs -> Worker`,
+
+-   Specifically, in this case, `get_url(connection=X)` is a `Worker` instance
+
+-   A “single” `Worker` instance is used by all sub-processes. (Since process
+    forking means variables aren’t shared, you can think of them as deep copies
+    of this single worker instance.)
+
+Any kwargs that are “tagged” as post-fork context managers will be used as such
+on the worker processes, otherwise they’ll be passed unchanged. For example,
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 @vimap.fcn_worker
@@ -118,7 +130,7 @@ def get_url(url, connection, timeout_s):
     return connection.get(url, timeout=timeout_s).text
 
 worker = get_url(
-    connection=vimap.PostForkContextManager(make_connection)
+    connection=vimap.contextmanager_resource(make_connection)
     timeout_s=options.timeout_s
 )
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -210,8 +222,8 @@ What do we aspire to do better than the regular `multiprocessing` library?
 
     [2]: <http://stackoverflow.com/q/2782961/81636>
 
--   Aims to have better worker exception handling --\*\* multiprocessing will
-    leave around dead worker processes and FIFOs; we aim not to.\*\*
+-   Aims to have better worker exception handling -- multiprocessing will leave
+    around dead worker processes and FIFOs; we aim not to.
 
 -   Collection of common use cases (reading from files, etc.)
 
