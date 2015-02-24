@@ -7,6 +7,7 @@ it riight now ....
 from __future__ import absolute_import
 from __future__ import print_function
 
+import cPickle
 import sys
 import traceback
 from collections import namedtuple
@@ -21,6 +22,34 @@ _ExceptionContext = namedtuple('ExceptionContext', ('value', 'formatted_tracebac
 
 class WorkerException(Exception):
     """Represents an exception that was raised from a worker process."""
+
+
+class UnpickleableException(Exception):
+    """Represents an exception from the worker that was both unpickleable
+    and unserializable to a string."""
+
+
+def try_serialize_exception(exception):
+    """
+    Serializes an exception that was unpickleable.
+
+    :type exception: Exception
+    """
+    exception_name = type(exception).__name__
+
+    # Try to extract a string representation of the exception ...
+    try:
+        string_exc = str(exception)
+    except TypeError:
+        try:
+            string_exc = repr(exception)
+        except TypeError:
+            string_exc = 'UNPICKLEABLE AND UNSERIALIZABLE MESSAGE'
+
+    try:
+        return type(exception)(string_exc)
+    except TypeError:
+        return UnpickleableException('{0}: {1}'.format(exception_name, string_exc))
 
 
 class ExceptionContext(_ExceptionContext):
@@ -44,6 +73,11 @@ class ExceptionContext(_ExceptionContext):
         _, value, tb = sys.exc_info()
         if value is None:
             raise TypeError('no exception in current context')
+
+        try:
+            cPickle.dumps(value)
+        except (TypeError, cPickle.PicklingError):
+            value = try_serialize_exception(value)
 
         formatted_traceback = ''.join(traceback.format_tb(tb) + [repr(value)])
         return cls(value, formatted_traceback)
