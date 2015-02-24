@@ -2,18 +2,11 @@
 '''
 Provides process pools for vimap.
 
-TBD:
+Generally you give it an input and iterate through results,
 
-For more complex tasks, which we might want to handle exceptions,
-
-    def process_result(input):
-        try:
-            result = (yield)
-            print("For input {0} got result {1}".format(input, result)
-        except Exception as e:
-            print("While processing input {0}, got exception {1}".format(input, e))
-
-    processes.imap(entire_input_sequence).handle_result(process_result)
+pool = vimap.pool.fork(...)
+for in_, out in pool.imap(my_input).zip_in_out():
+    ...
 
 You can also use it in a more "async" manner, e.g. when your input sequences are
 relatively small and/or calculated ahead of time, you can write,
@@ -21,7 +14,7 @@ relatively small and/or calculated ahead of time, you can write,
     processes.map(seq1)
     processes.map(seq2)
 
-(by default, input is only enqueued as results are consumed.)
+However, remember input is only enqueued roughly as results are consumed!
 '''
 from __future__ import absolute_import
 from __future__ import print_function
@@ -60,7 +53,7 @@ class VimapPool(object):
             worker_sequence,
             max_real_in_flight_factor=10,
             max_total_in_flight_factor=100,
-            timeouts_config=vimap.config.TimeoutConfig(5.0),
+            timeouts_config=vimap.config.TimeoutConfig.default_config(),
             debug=False
     ):
         """
