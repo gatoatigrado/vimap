@@ -19,12 +19,25 @@ _red = (lambda s: '\x1b[31m{0}\x1b[0m'.format(s)) if sys.stderr.isatty() else (l
 _ExceptionContext = namedtuple('ExceptionContext', ('value', 'formatted_traceback'))
 
 
+class WorkerException(Exception):
+    """Represents an exception that was raised from a worker process."""
+
+
 class ExceptionContext(_ExceptionContext):
     '''Pickleable representation of an exception from a process.
 
     It contains the exception value and the formatted traceback string.
     '''
     __slots__ = ()
+
+    @property
+    def formatted_exception(self):
+        return "{0}: {1}".format(type(self.value).__name__, self.value)
+
+    def reraise(self):
+        raise WorkerException(
+            self.formatted_exception + "\nTraceback:\n" + self.formatted_traceback
+        )
 
     @classmethod
     def current(cls):
@@ -50,9 +63,10 @@ def print_exception(ec, traceback_, worker_):
     sys.stderr.write is an attempt to avoid multiple threads munging log lines.
     '''
     clean_print(
-        _red("[Worker Exception] {ec.value.__class__.__name__}: {ec.value}".format(ec=ec))
-        + "\n"
-        + ec.formatted_traceback)
+        _red("[Worker Exception] {ec.value.__class__.__name__}: {ec.value}".format(ec=ec)) +
+        "\n" +
+        ec.formatted_traceback
+    )
 
 
 def print_warning(message, **kwargs):

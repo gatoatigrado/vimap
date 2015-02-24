@@ -95,6 +95,12 @@ class VimapPool(object):
         def check_output_for_error(item):
             uid, typ, output = item
             if typ == 'exception':
+                # NOTE(gatoatigrado|2015-02-23): While we may eventually want to remove
+                # this, since zip_in_out() rethrows exceptions and such, it's probably
+                # okay for now since there are a few conditions, like exceptions being
+                # raised on worker startup, or the main process not finishing
+                # iterating through zip_in_out(), where only this would print errors.
+                # c.f. ExceptionTest.test_unconsumed_exceptions.
                 vimap.exception_handling.print_exception(output, None, None)
                 if self_ref():
                     self_ref().has_exceptions = True
@@ -112,7 +118,8 @@ class VimapPool(object):
 
     num_in_flight = property(lambda self: self.qm.num_total_in_flight)
 
-    _default_print_fcn = lambda msg: print(msg, file=sys.stderr)
+    def _default_print_fcn(msg):
+        print(msg, file=sys.stderr)
 
     def add_progress_notification(
             self,
@@ -299,6 +306,9 @@ class VimapPool(object):
         for inp, output, typ in self.zip_in_out_typ(*args, **kwargs):
             if typ == 'output':
                 yield inp, output
+            elif typ == 'exception':
+                assert isinstance(output, vimap.exception_handling.ExceptionContext)
+                output.reraise()
     # ------
 
     def block_ignore_output(self, *args, **kwargs):

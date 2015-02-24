@@ -34,7 +34,10 @@ readable_mode_strings = {
 
 
 FDInfo = namedtuple("FDInfo", ["modes", "symlink"])
-current_proc_fd_dir = lambda *subpaths: os.path.join("/proc", str(os.getpid()), "fd", *subpaths)
+
+
+def current_proc_fd_dir(*subpaths):
+    return os.path.join("/proc", str(os.getpid()), "fd", *subpaths)
 
 
 def fd_type_if_open(fd_number):
@@ -111,7 +114,8 @@ def difference_open_fds(before, after):
     closed.
     """
     # "a - b" for dicts -- remove anything in 'a' that has a key in b
-    dict_diff = lambda a, b: dict((k, a[k]) for k in (frozenset(a) - frozenset(b)))
+    def dict_diff(a, b):
+        return dict((k, a[k]) for k in (frozenset(a) - frozenset(b)))
     for k in (frozenset(after) & frozenset(before)):
         if before[k] != after[k]:
             print("WARNING: FD {0} changed from {1} to {2}".format(k, before[k], after[k]))
