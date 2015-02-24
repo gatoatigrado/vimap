@@ -110,9 +110,13 @@ class VimapQueueManager(object):
 
     @property
     def num_total_in_flight(self):
-        return self.num_real_in_flight + len(self.tmp_output_queue)
+        return (
+            len(self.tmp_input_queue) +
+            self.num_real_in_flight +
+            len(self.tmp_output_queue)
+        )
 
-    def put_input(self, x):
+    def try_put_input(self, x):
         self.input_queue.put(x, timeout=self.timeouts_config.input_queue_put_timeout)
         self.num_real_in_flight += 1
 
@@ -166,34 +170,49 @@ class VimapQueueManager(object):
         else:
             raise multiprocessing.queues.Empty()
 
+    def read_input_iterator_to_buffer(self, input_iterator, n_to_put):
+        """Reads from the [main thread] input iterator, to a temporary buffer.
+        This buffer is typically entirely consumed, unless the input queue is
+        busy/full (they have finite queue size, sometimes smaller than the
+        limits we put in place).
+        """
+        if n_to_put > 0:
+            self.tmp_input_queue += list(
+                itertools.islice(input_iterator, n_to_put - len(self.tmp_input_queue))
+            )
+
+    def put_input_buffer_to_input(self):
+        try:
+            while self.tmp_input_queue:
+                x = self.tmp_input_queue[0]
+                self.try_put_input(x)
+                self.tmp_input_queue.pop(0)
+        except multiprocessing.queues.Full:
+            pass
+
     def spool_input(self, input_iterator):
         '''
         Put input from `input_iterator` on the input queue. Spools as many
         as permitted by max_real_in_flight and max_total_in_flight allow.
 
         Returns:
-            True iff `input_iterator` is exhausted.
+            True iff `input_iterator` is exhausted. This may have some false
+            negatives but if True it should always be exhausted.
         '''
         self.feed_out_to_tmp()
+
         n_to_put = min(
             self.max_real_in_flight - self.num_real_in_flight,
             self.max_total_in_flight - self.num_total_in_flight
         )
+        self.read_input_iterator_to_buffer(input_iterator, n_to_put)
 
-        if n_to_put > 0:
-            self.tmp_input_queue += list(
-                itertools.islice(input_iterator, n_to_put - len(self.tmp_input_queue))
-            )
+        # The input is exhausted if BOTH the queue wasn't full (i.e. we
+        # actually tried to consume input), and we didn't get anything.
+        input_exhausted = (n_to_put > 0) and (not self.tmp_input_queue)
 
-            if not self.tmp_input_queue:
-                return True
-            try:
-                while self.tmp_input_queue:
-                    x = self.tmp_input_queue[0]
-                    self.put_input(x)
-                    self.tmp_input_queue.pop(0)
-            except multiprocessing.queues.Full:
-                pass
+        self.put_input_buffer_to_input()
+        return input_exhausted
 
     def send_stop_tokens(self, num_tokens):
         try:
