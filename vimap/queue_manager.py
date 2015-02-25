@@ -136,19 +136,14 @@ class VimapQueueManager(object):
         a long time to transfer data back, it might be worth skipping out
         of here and continuing the main process, so it can e.g. queue more
         input and keep workers busy.
-
-        :returns: True if it got a new item, False otherwise
-        :rtype: bool
         '''
         start_time = time.time()
-        got_item = False
         while (max_time_s is None) or (time.time() - start_time < max_time_s):
             try:
                 item = self.output_queue.get_nowait()
                 self.num_real_in_flight -= 1  # only decrement if no exceptions were thrown
 
                 self.tmp_output_queue.append(item)
-                got_item = True
 
                 if self.debug:
                     print("Main thread: got item #{0}".format(item[0]))
@@ -156,7 +151,6 @@ class VimapQueueManager(object):
                     hook(item)
             except multiprocessing.queues.Empty:
                 break
-        return got_item
 
     def pop_output(self):
         '''Essentially a buffered version of output_queue.get_nowait().'''
