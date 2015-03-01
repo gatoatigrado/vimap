@@ -13,7 +13,7 @@ import vimap.exception_handling
 import vimap.pool
 import vimap.testing
 import vimap.worker_process
-from vimap.exception_handling import ExceptionContext
+from vimap.exception_handling import ExceptionContext, WorkerException
 from vimap.testing import repeat_test_to_catch_flakiness
 
 
@@ -82,7 +82,8 @@ class ExceptionsTest(T.TestCase):
 
     def check_printed_exceptions(self, print_exc_mock, expected_exception, count):
         # From a mocked call to print_exception(), extract ExceptionContext.value
-        get_ec_value = lambda (args, kwargs): (kwargs.get('ec') or args[0]).value
+        def get_ec_value((args, kwargs)):
+            return (kwargs.get('ec') or args[0]).value
         T.assert_equal(
             [serialize_error(get_ec_value(call)) for call in print_exc_mock.call_args_list],
             [serialize_error(expected_exception)] * count)
@@ -191,7 +192,22 @@ class ExceptionsTest(T.TestCase):
         processes = self.fork_pool(
             (worker_raise_exc_with_curleys.init_args(init=i) for i in xrange(2)),
             max_real_in_flight_factor=2)
-        processes.imap([1]).block_ignore_output()
+        with T.assert_raises(WorkerException):
+            processes.imap([1]).block_ignore_output()
+        del processes
+
+        calls = print_exc_mock.call_args_list
+        errors = [serialize_error(call_args[0].value) for call_args, _ in calls]
+        T.assert_equal(errors, [serialize_error(ValueError("{0} curley braces!"))])
+
+    @mock.patch.object(vimap.exception_handling, 'print_exception', autospec=True)
+    def test_a_few_error_with_zip_in_out(self, print_exc_mock):
+        """Same as the above, but use zip_in_out() instead of block_ignore_output()."""
+        processes = self.fork_pool(
+            (worker_raise_exc_with_curleys.init_args(init=i) for i in xrange(2)),
+            max_real_in_flight_factor=2)
+        with T.assert_raises(WorkerException):
+            tuple(processes.imap([1]).zip_in_out())
         del processes
 
         calls = print_exc_mock.call_args_list

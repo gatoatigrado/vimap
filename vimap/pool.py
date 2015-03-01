@@ -2,18 +2,11 @@
 '''
 Provides process pools for vimap.
 
-TBD:
+Generally you give it an input and iterate through results,
 
-For more complex tasks, which we might want to handle exceptions,
-
-    def process_result(input):
-        try:
-            result = (yield)
-            print("For input {0} got result {1}".format(input, result)
-        except Exception as e:
-            print("While processing input {0}, got exception {1}".format(input, e))
-
-    processes.imap(entire_input_sequence).handle_result(process_result)
+pool = vimap.pool.fork(...)
+for in_, out in pool.imap(my_input).zip_in_out():
+    ...
 
 You can also use it in a more "async" manner, e.g. when your input sequences are
 relatively small and/or calculated ahead of time, you can write,
@@ -21,7 +14,7 @@ relatively small and/or calculated ahead of time, you can write,
     processes.map(seq1)
     processes.map(seq2)
 
-(by default, input is only enqueued as results are consumed.)
+However, remember input is only enqueued roughly as results are consumed!
 '''
 from __future__ import absolute_import
 from __future__ import print_function
@@ -60,7 +53,7 @@ class VimapPool(object):
             worker_sequence,
             max_real_in_flight_factor=10,
             max_total_in_flight_factor=100,
-            timeouts_config=vimap.config.TimeoutConfig(5.0),
+            timeouts_config=vimap.config.TimeoutConfig.default_config(),
             debug=False
     ):
         """
@@ -95,6 +88,12 @@ class VimapPool(object):
         def check_output_for_error(item):
             uid, typ, output = item
             if typ == 'exception':
+                # NOTE(gatoatigrado|2015-02-23): While we may eventually want to remove
+                # this, since zip_in_out() rethrows exceptions and such, it's probably
+                # okay for now since there are a few conditions, like exceptions being
+                # raised on worker startup, or the main process not finishing
+                # iterating through zip_in_out(), where only this would print errors.
+                # c.f. ExceptionTest.test_unconsumed_exceptions.
                 vimap.exception_handling.print_exception(output, None, None)
                 if self_ref():
                     self_ref().has_exceptions = True
@@ -112,7 +111,8 @@ class VimapPool(object):
 
     num_in_flight = property(lambda self: self.qm.num_total_in_flight)
 
-    _default_print_fcn = lambda msg: print(msg, file=sys.stderr)
+    def _default_print_fcn(msg):
+        print(msg, file=sys.stderr)
 
     def add_progress_notification(
             self,
@@ -293,12 +293,19 @@ class VimapPool(object):
         # Return when input given is exhausted, or workers die from exceptions
 
     def zip_in_out(self, *args, **kwargs):
-        '''Yield (input, output) tuples for each input item processed
-        skipping inputs that had an exception.
+        '''Yield (input, output) tuples for each input item processed.
+        If exceptions are raised in worker processes for a given input,
+        they will be re-raised on the main process.
+
+        :param *args: args (currently, close_if_done) passed to zip_in_out_typ
+        :param **kwargs: kwargs (currently, close_if_done) passed to zip_in_out_typ
         '''
         for inp, output, typ in self.zip_in_out_typ(*args, **kwargs):
             if typ == 'output':
                 yield inp, output
+            elif typ == 'exception':
+                assert isinstance(output, vimap.exception_handling.ExceptionContext)
+                output.reraise()
     # ------
 
     def block_ignore_output(self, *args, **kwargs):

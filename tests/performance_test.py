@@ -24,7 +24,8 @@ import vimap.worker_process
 
 @contextlib.contextmanager
 def assert_memory_use(name, lower, upper):
-    rss = lambda: resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    def rss():
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     gc.collect()
     before = rss()
     yield

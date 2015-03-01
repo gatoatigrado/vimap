@@ -112,7 +112,11 @@ class WorkerRoutine(object):
         self.input_index = None
         self.debug("starting; PID {0}", os.getpid())
         try:
-            fcn_iter = self.fcn(self.worker_input_generator(), *self.init_args, **self.init_kwargs)
+            fcn_iter = self.fcn(
+                self.worker_input_generator(),
+                *self.init_args,
+                **self.init_kwargs
+            )
             try:
                 iter(fcn_iter)
             except TypeError:

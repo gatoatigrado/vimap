@@ -22,7 +22,9 @@ class UnpickleableAndUnprintable(tuple):
     __str__ = __repr__ = NotImplemented
 
 
-get_func = lambda x: lambda y: x + y
+def get_func(x):
+    return lambda y: x + y
+
 unpickleable = UnpickleableAndUnprintable((get_func(3), 3))
 
 

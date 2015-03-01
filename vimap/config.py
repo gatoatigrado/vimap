@@ -13,3 +13,9 @@ class TimeoutConfig(namedtuple("TimeoutConfig", ["general_timeout"])):
     @property
     def input_queue_put_timeout(self):
         return self.general_timeout
+
+    @classmethod
+    def default_config(cls):
+        return cls(
+            general_timeout=5.0
+        )

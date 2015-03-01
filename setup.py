@@ -41,7 +41,7 @@ if os.path.isfile(readme_path):
 
 setup(
     name="vimap",
-    version="0.1.9-alpha-deadlock-quickfix",
+    version="0.2.0",
     provides=["vimap"],
     author="gatoatigrado",
     author_email="gatoatigrado@gmail.com",
