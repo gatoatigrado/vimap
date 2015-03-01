@@ -2,6 +2,9 @@ vimap changelog
 =================
 
 0.2.0 (2015-02-24)
+ - Changed exception behavior so that zip_in_out() / imap_unordered()
+   re-throw exceptions from workers. If an exception couldn't be properly
+   serialized, then an alternate exception message is instead thrown.
  - Fixed the queue manager's total in-flight calculation, not sure how this
    will affect performance
  - (from 0.1.9): Better bounds on queue sizes, which is helpful for expensive

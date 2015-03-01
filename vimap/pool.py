@@ -293,8 +293,12 @@ class VimapPool(object):
         # Return when input given is exhausted, or workers die from exceptions
 
     def zip_in_out(self, *args, **kwargs):
-        '''Yield (input, output) tuples for each input item processed
-        skipping inputs that had an exception.
+        '''Yield (input, output) tuples for each input item processed.
+        If exceptions are raised in worker processes for a given input,
+        they will be re-raised on the main process.
+
+        :param *args: args (currently, close_if_done) passed to zip_in_out_typ
+        :param **kwargs: kwargs (currently, close_if_done) passed to zip_in_out_typ
         '''
         for inp, output, typ in self.zip_in_out_typ(*args, **kwargs):
             if typ == 'output':
