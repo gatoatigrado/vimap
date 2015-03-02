@@ -1,6 +1,9 @@
 vimap changelog
 =================
 
+0.2.1 (2015-03-02)
+ - Minor change for setup.py -- printing warning to stderr
+
 0.2.0 (2015-02-24)
  - Changed exception behavior so that zip_in_out() / imap_unordered()
    re-throw exceptions from workers. If an exception couldn't be properly

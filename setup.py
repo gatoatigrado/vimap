@@ -1,4 +1,7 @@
+from __future__ import print_function
+
 import os.path
+import sys
 
 from setuptools import find_packages
 from setuptools import setup
@@ -29,7 +32,10 @@ if os.path.isfile(readme_path):
     try:
         import pandoc
     except ImportError:
-        print("WARNING: COULD NOT IMPORT pandoc; YOU WON'T HAVE A NICE README")
+        print(
+          "WARNING: COULD NOT IMPORT pandoc; YOU WON'T HAVE A NICE README",
+          file=sys.stderr
+        )
     else:
         def get_rst(markdown_file):
             doc = pandoc.Document()
@@ -41,7 +47,7 @@ if os.path.isfile(readme_path):
 
 setup(
     name="vimap",
-    version="0.2.0",
+    version="0.2.1",
     provides=["vimap"],
     author="gatoatigrado",
     author_email="gatoatigrado@gmail.com",
