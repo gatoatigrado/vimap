@@ -1,6 +1,11 @@
 vimap changelog
 =================
 
+0.2.2 (2015-05-07)
+- imap_ordered convenience function
+- adjusted default spooling to be a little less. this is a little slower for
+  synthetic/test data, but helps avoid some IRL performance gotchas
+
 0.2.1 (2015-03-02)
  - Minor change for setup.py -- printing warning to stderr
 
