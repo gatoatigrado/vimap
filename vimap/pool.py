@@ -51,8 +51,8 @@ class VimapPool(object):
     def __init__(
             self,
             worker_sequence,
-            max_real_in_flight_factor=10,
-            max_total_in_flight_factor=100,
+            max_real_in_flight_factor=5,
+            max_total_in_flight_factor=10,
             timeouts_config=vimap.config.TimeoutConfig.default_config(),
             debug=False
     ):

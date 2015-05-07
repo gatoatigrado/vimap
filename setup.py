@@ -47,7 +47,7 @@ if os.path.isfile(readme_path):
 
 setup(
     name="vimap",
-    version="0.2.1",
+    version="0.2.2",
     provides=["vimap"],
     author="gatoatigrado",
     author_email="gatoatigrado@gmail.com",
