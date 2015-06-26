@@ -55,6 +55,14 @@ def imap_ordered(fcn, iterable, **kwargs):
 
 
 def imap_ordered_chunked(fcn, inputs, chunk_size=100, **kwargs):
+    """
+    Semantically same as imap_ordered. But instead of feeding each single
+    input to a process, this method chunks the inputs first and feed each chunk
+    of data to a process at a time.
+
+    For example, if input is [1, 2, 3] and chunk_size is 2 the first process
+    gets [1, 2] and the second process gets [3].
+    """
     inputs_chunked = vimap.util.chunk(inputs, chunk_size)
     output_chunks = imap_ordered(
         lambda chunk, **kwargs2: [fcn(x, **kwargs2) for x in chunk],
