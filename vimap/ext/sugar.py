@@ -4,6 +4,7 @@ Provides some convenience functions.
 import heapq
 
 import vimap.pool
+import vimap.util
 import vimap.worker_process
 
 
@@ -51,3 +52,13 @@ def imap_ordered(fcn, iterable, **kwargs):
             next_index += 1
             yield fx_next
     assert not heap
+
+
+def imap_ordered_chunked(fcn, inputs, chunk_size=100, **kwargs):
+    inputs_chunked = vimap.util.chunk(inputs, chunk_size)
+    output_chunks = imap_ordered(
+        lambda chunk, **kwargs2: [fcn(x, **kwargs2) for x in chunk],
+        inputs_chunked,
+        **kwargs
+    )
+    return (x for chunk in output_chunks for x in chunk)
