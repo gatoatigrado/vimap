@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import itertools
 import multiprocessing
+import time
 
 import mock
 import testify as T
@@ -113,8 +114,15 @@ class ImapOrderedChunkedTests(T.TestCase):
         # For each input value, each worker process should return the input
         # itself along with the process pid so that we know which process gets
         # which input value.
+        def input_with_pid(input):
+            # Delay a bit here to prevent the test being flaky when one worker
+            # finishing with one chunk of input and grabbing next before we assign
+            # that next chunk to another worker
+            time.sleep(0.1)
+            return (input, multiprocessing.current_process().pid)
+
         input_with_pids = tuple(vimap.ext.sugar.imap_ordered_chunked(
-            lambda x: (x, multiprocessing.current_process().pid),
+            input_with_pid,
             range(8),
             chunk_size=3
         ))
