@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 
 import itertools
+import multiprocessing
 
 import mock
 import testify as T
@@ -93,3 +94,41 @@ class ImapOrderedTests(T.TestCase):
 
     def test_exceptions(self):
         run_exception_test(vimap.ext.sugar.imap_ordered)
+
+
+class ImapOrderedChunkedTests(T.TestCase):
+    def test_basic(self):
+        for n in [2, 4, 8, 32, 3200, 32000]:
+            doubled = tuple(vimap.ext.sugar.imap_ordered_chunked(
+                lambda x: 2 * x,
+                range(n),
+                num_workers=8
+            ))
+            T.assert_equal(doubled, tuple(2 * x for x in range(n)))
+
+    def test_chunking(self):
+        """
+        Makes sure we do chunk the data and each process gets a chunk.
+        """
+        # For each input value, each worker process should return the input
+        # itself along with the process pid so that we know which process gets
+        # which input value.
+        input_with_pids = tuple(vimap.ext.sugar.imap_ordered_chunked(
+            lambda x: (x, multiprocessing.current_process().pid),
+            range(8),
+            chunk_size=3
+        ))
+
+        # By grouping return values by pid, we could get all the input values for
+        # each worker process. Make sure the input value groups are the same as
+        # the result of chunking (expected_input_chunks).
+        expected_input_chunks = [(0, 1, 2), (3, 4, 5), (6, 7)]
+        actual_input_chunks = []
+        for pid, group in itertools.groupby(input_with_pids, key=lambda (x, pid): pid):
+            input_chunk, pids = zip(*group)
+            actual_input_chunks.append(input_chunk)
+
+        T.assert_equal(expected_input_chunks, actual_input_chunks)
+
+    def test_exceptions(self):
+        run_exception_test(vimap.ext.sugar.imap_ordered_chunked)
