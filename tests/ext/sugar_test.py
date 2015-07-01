@@ -110,12 +110,18 @@ class ImapOrderedChunkedTests(T.TestCase):
         """
         Makes sure we do chunk the data and each process gets a chunk.
         """
+        # For each input value, each worker process should return the input
+        # itself along with the process pid so that we know which process gets
+        # which input value.
         input_with_pids = tuple(vimap.ext.sugar.imap_ordered_chunked(
             lambda x: (x, multiprocessing.current_process().pid),
             range(8),
             chunk_size=3
         ))
 
+        # By grouping return values by pid, we could get all the input values for
+        # each worker process. Make sure the input value groups are the same as
+        # the result of chunking (expected_input_chunks).
         expected_input_chunks = [(0, 1, 2), (3, 4, 5), (6, 7)]
         actual_input_chunks = []
         for pid, group in itertools.groupby(input_with_pids, key=lambda (x, pid): pid):
@@ -125,4 +131,4 @@ class ImapOrderedChunkedTests(T.TestCase):
         T.assert_equal(expected_input_chunks, actual_input_chunks)
 
     def test_exceptions(self):
-        run_exception_test(vimap.ext.sugar.imap_ordered)
+        run_exception_test(vimap.ext.sugar.imap_ordered_chunked)
